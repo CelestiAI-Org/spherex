@@ -1,0 +1,43 @@
+{
+ "target": "wise-0855-0714",
+ "name": "WISE 0855-0714",
+ "ra": 133.76785137078218,
+ "dec": -7.247417222222222,
+ "fov_arcmin": 6.0,
+ "pipeline": "fallback",
+ "frames": [
+  {
+   "index": 0,
+   "url": "/static/wise-0855-0714/0.png",
+   "mjd_start": 60800.70069465,
+   "mjd_end": 60801.519319893,
+   "n_images": 30
+  },
+  {
+   "index": 1,
+   "url": "/static/wise-0855-0714/1.png",
+   "mjd_start": 60979.723343354,
+   "mjd_end": 61022.368771664,
+   "n_images": 133
+  },
+  {
+   "index": 2,
+   "url": "/static/wise-0855-0714/2.png",
+   "mjd_start": 61151.198599395,
+   "mjd_end": 61174.287883944,
+   "n_images": 103
+  }
+ ],
+ "diffs": [
+  {
+   "a": 0,
+   "b": 1,
+   "url": "/static/wise-0855-0714/diff_0_1.png"
+  },
+  {
+   "a": 1,
+   "b": 2,
+   "url": "/static/wise-0855-0714/diff_1_2.png"
+  }
+ ]
+}

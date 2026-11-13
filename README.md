@@ -17,7 +17,8 @@ pytest                                    # tests use synthetic cutouts, no netw
 ```
 
 Offline backup: `python scripts/export_static.py` writes `static_export/` (JSON + PNGs for every
-cached target). If `cache/` is missing, the API serves `/frames` from that folder instead.
+cached target, plus difference PNGs between consecutive visits). It is committed to git and is what the
+deployed server (no `cache/`) serves: `/frames` ignores `fov` there, and `/diff` only works for `b = a + 1`.
 
 ## Endpoints
 

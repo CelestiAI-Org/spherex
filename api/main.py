@@ -167,8 +167,11 @@ def frames(ra: float, dec: float, fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, l
 def diff(ra: float, dec: float, a: int, b: int, fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, le=60)):
     """PNG difference of frames a and b (grey = no change, bright/dark = brighter/fainter in b)."""
     key, target = resolve_target(ra, dec)
-    if not load_index(key):
-        raise HTTPException(503, "/diff needs the cutout cache, which is not available on this server")
+    if not load_index(key):  # no cutout cache here: serve a pre-rendered diff from static_export/
+        path = STATIC_EXPORT_DIR / key / f"diff_{a}_{b}.png"
+        if not path.exists():
+            raise HTTPException(404, "This server only has pre-rendered differences between consecutive frames (b = a + 1)")
+        return Response(path.read_bytes(), media_type="image/png")
     fov = min(fov, cached_fov(key))
     frs, _ = compute_frames(key, round(target["ra"], 5), round(target["dec"], 5), round(fov, 3))
     for idx in (a, b):

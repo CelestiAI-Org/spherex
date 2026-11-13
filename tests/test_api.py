@@ -74,3 +74,18 @@ def test_pipeline_crash_falls_back(client, monkeypatch):
     body = client.get("/frames", params={**BARNARD, "fov": 4.2}).json()
     assert body["pipeline"] == "fallback" and len(body["frames"]) == 3
     compute_frames.cache_clear()
+
+
+def test_static_fallback_serves_frames_and_diffs(client, tmp_path, monkeypatch):
+    """With no cutout cache, /frames and /diff are served from static_export/."""
+    import json
+    import api.main as m
+    key = "barnards-star"
+    (tmp_path / key).mkdir()
+    (tmp_path / key / "frames.json").write_text(json.dumps({"target": key, "frames": [], "diffs": []}))
+    (tmp_path / key / "diff_0_1.png").write_bytes(b"PNGDATA")
+    monkeypatch.setattr(m, "STATIC_EXPORT_DIR", tmp_path)
+    monkeypatch.setattr(m, "load_index", lambda k: [])
+    assert client.get("/frames", params=BARNARD).json()["target"] == key
+    assert client.get("/diff", params={**BARNARD, "a": 0, "b": 1}).content == b"PNGDATA"
+    assert client.get("/diff", params={**BARNARD, "a": 0, "b": 2}).status_code == 404
