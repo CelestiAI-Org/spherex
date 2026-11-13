@@ -1,3 +1,9 @@
+from dataclasses import dataclass
+
+import numpy as np
+from astropy.wcs import WCS
+
+
 @dataclass
 class Cutout:
     image: np.ndarray   # SPHEREx image minus background (zodi)
