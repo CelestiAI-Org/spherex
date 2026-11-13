@@ -42,5 +42,16 @@
   "ra": 76.95653,
   "dec": 30.40144,
   "frames": 3
+ },
+ "r-draconis": {
+  "name": "R Draconis",
+  "ra_cat": 248.16761,
+  "dec_cat": 66.75498,
+  "epoch_cat": 2000.0,
+  "pmra": 0.0,
+  "pmdec": 0.0,
+  "ra": 248.16761,
+  "dec": 66.75498,
+  "frames": 3
  }
 }
