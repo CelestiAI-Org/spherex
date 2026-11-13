@@ -1,0 +1,46 @@
+{
+ "barnards-star": {
+  "name": "Barnard's Star",
+  "ra_cat": 269.45208,
+  "dec_cat": 4.69336,
+  "epoch_cat": 2000.0,
+  "pmra": -802.8,
+  "pmdec": 10362.4,
+  "ra": 269.4462624931781,
+  "dec": 4.768199555555555,
+  "frames": 3
+ },
+ "wise-0855-0714": {
+  "name": "WISE 0855-0714",
+  "ra_cat": 133.79512916666667,
+  "dec_cat": -7.245147222222222,
+  "epoch_cat": 2014.0,
+  "pmra": -8118.0,
+  "pmdec": -681.0,
+  "ra": 133.76785137078218,
+  "dec": -7.247417222222222,
+  "frames": 3
+ },
+ "eps-ind-b": {
+  "name": "Epsilon Indi B",
+  "ra_cat": 331.04415,
+  "dec_cat": -56.78284,
+  "epoch_cat": 2000.0,
+  "pmra": 3966.0,
+  "pmdec": -2536.0,
+  "ra": 331.09643662163006,
+  "dec": -56.80115555555555,
+  "frames": 4
+ },
+ "rw-aurigae": {
+  "name": "RW Aurigae",
+  "ra_cat": 76.95653,
+  "dec_cat": 30.40144,
+  "epoch_cat": 2000.0,
+  "pmra": 0.0,
+  "pmdec": 0.0,
+  "ra": 76.95653,
+  "dec": 30.40144,
+  "frames": 3
+ }
+}

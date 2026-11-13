@@ -1,0 +1,43 @@
+{
+ "target": "rw-aurigae",
+ "name": "RW Aurigae",
+ "ra": 76.95653,
+ "dec": 30.40144,
+ "fov_arcmin": 6.0,
+ "pipeline": "fallback",
+ "frames": [
+  {
+   "index": 0,
+   "url": "/static/rw-aurigae/0.png",
+   "mjd_start": 60919.420312786,
+   "mjd_end": 60938.232724025,
+   "n_images": 114
+  },
+  {
+   "index": 1,
+   "url": "/static/rw-aurigae/1.png",
+   "mjd_start": 61091.720282138,
+   "mjd_end": 61111.002753168,
+   "n_images": 114
+  },
+  {
+   "index": 2,
+   "url": "/static/rw-aurigae/2.png",
+   "mjd_start": 61285.097835518,
+   "mjd_end": 61299.896562983,
+   "n_images": 114
+  }
+ ],
+ "diffs": [
+  {
+   "a": 0,
+   "b": 1,
+   "url": "/static/rw-aurigae/diff_0_1.png"
+  },
+  {
+   "a": 1,
+   "b": 2,
+   "url": "/static/rw-aurigae/diff_1_2.png"
+  }
+ ]
+}
