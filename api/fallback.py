@@ -6,9 +6,15 @@
 """
 import numpy as np
 
+from api.load_cache import BAD_PIXEL_MASK
 from science.types import Cutout, Frame
 
-VISIT_GAP_DAYS = 3.0
+# For display we keep saturated stars: bits 0 TRANSIENT, 1 OVERFLOW, 2 SUR_ERROR, 26 BLOOM mark the
+# cores of bright stars (e.g. Barnard's Star). Masking them leaves a black hole in the middle.
+KEEP_BITS = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 26)
+MASK = BAD_PIXEL_MASK & ~KEEP_BITS
+
+VISIT_GAP_DAYS = 60.0  # real passes are ~20-50 days wide, ~100+ days apart
 GRID_SIZE = 128  # output frame is GRID_SIZE x GRID_SIZE pixels
 
 
@@ -37,7 +43,7 @@ def resample(cutout: Cutout, ra: float, dec: float, fov_arcmin: float, n: int = 
     out = np.full((n, n), np.nan)
     ixc, iyc = np.clip(ix, 0, nx - 1), np.clip(iy, 0, ny - 1)
     vals = cutout.image[iyc, ixc].astype(float)
-    good = ok & (cutout.flags[iyc, ixc] == 0) & np.isfinite(vals)
+    good = ok & ((cutout.flags[iyc, ixc] & MASK) == 0) & np.isfinite(vals)
     out[good] = vals[good]
     return out
 

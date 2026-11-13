@@ -11,6 +11,7 @@ Re-running skips files that are already cached.
 """
 import argparse
 import json
+from concurrent.futures import ThreadPoolExecutor
 import sys
 from pathlib import Path
 
@@ -19,7 +20,7 @@ import irsa  # noqa: E402
 from api.load_cache import CACHE_DIR, load_cutout  # noqa: E402
 from api.targets import DEFAULT_FOV_ARCMIN, REAL_TARGETS, TARGETS  # noqa: E402
 
-VISIT_GAP_DAYS = 3.0
+VISIT_GAP_DAYS = 60.0  # same as api/fallback.py
 
 
 def count_visits(mjds):
@@ -41,21 +42,30 @@ def precache(key: str, fov: float = DEFAULT_FOV_ARCMIN, max_images: int | None =
     if not cols["url"]:
         raise SystemExit(f"No access URL column in {info['all_columns']}")
 
-    rows = []
+    jobs = []  # (file name, cutout url); the file name comes from the access URL (obs_id is shared by 6 detectors)
     for i, row in enumerate(table):
         if max_images and i >= max_images:
             break
-        ident = str(row[cols["id"]]) if cols["id"] else f"img{i}"
-        name = "".join(c if c.isalnum() or c in "-_" else "_" for c in ident) + ".fits"
+        access = str(row[cols["url"]])
+        jobs.append((Path(access.split("?")[0]).stem + ".fits", irsa.cutout_url(access, t["ra"], t["dec"], fov)))
+
+    def fetch(job):
+        name, url = job
         dest = out / "cutouts" / name
-        if not dest.exists():
-            url = irsa.cutout_url(str(row[cols["url"]]), t["ra"], t["dec"], fov)
-            if not irsa.download_cutout(url, dest):
-                print(f"[{key}] FAILED {ident}")
+        if dest.exists() or irsa.download_cutout(url, dest):
+            return name
+        return None
+
+    rows = []
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for n, name in enumerate(pool.map(fetch, jobs), 1):
+            if name is None:
+                print(f"[{key}] FAILED a download")
                 continue
-        c = load_cutout(dest)
-        rows.append({"file": name, "mjd": c.mjd, "detector": c.detector})
-        print(f"[{key}] {i + 1}/{len(table)} {name} mjd={c.mjd:.3f} det={c.detector}")
+            c = load_cutout(out / "cutouts" / name)
+            rows.append({"file": name, "mjd": c.mjd, "detector": c.detector})
+            if n % 25 == 0 or n == len(jobs):
+                print(f"[{key}] {n}/{len(jobs)} cutouts cached")
 
     (out / "index.json").write_text(json.dumps({"fov_arcmin": fov, "cutouts": rows}, indent=1))
     visits = count_visits([r["mjd"] for r in rows])

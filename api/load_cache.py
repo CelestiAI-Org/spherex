@@ -20,6 +20,11 @@ if str(ROOT) not in sys.path:  # so `science` imports work from anywhere
 
 from science.types import Cutout  # noqa: E402
 
+# FLAGS is a bit field (bit names are in the FLAGS header: MSKNnnnn). Bad = every bit except
+# 12 FULLSAMPLE (info only) and 21 SOURCE (pixel belongs to a real source - we want those!).
+# Use as:  good = (cutout.flags & BAD_PIXEL_MASK) == 0
+BAD_PIXEL_MASK = sum(1 << b for b in (0, 1, 2, 6, 7, 9, 10, 11, 14, 15, 17, 19, 20, 22, 23, 24, 25, 26, 27, 28))
+
 CACHE_DIR = Path(os.environ.get("SPHEREX_CACHE_DIR", ROOT / "cache"))
 
 
