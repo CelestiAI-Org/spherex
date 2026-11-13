@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import irsa  # noqa: E402
 from api.load_cache import CACHE_DIR, load_cutout  # noqa: E402
-from api.targets import DEFAULT_FOV_ARCMIN, TARGETS  # noqa: E402
+from api.targets import DEFAULT_FOV_ARCMIN, REAL_TARGETS, TARGETS  # noqa: E402
 
 VISIT_GAP_DAYS = 3.0
 
@@ -71,7 +71,7 @@ if __name__ == "__main__":
     ap.add_argument("--fov", type=float, default=DEFAULT_FOV_ARCMIN)
     ap.add_argument("--max-images", type=int)
     a = ap.parse_args()
-    keys = list(TARGETS) if a.all else a.targets
+    keys = list(REAL_TARGETS) if a.all else a.targets
     results = []
     for k in keys:
         try:

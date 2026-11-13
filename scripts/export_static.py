@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from api.load_cache import load_index  # noqa: E402
 from api.main import app  # noqa: E402
-from api.targets import TARGETS  # noqa: E402
+from api.targets import REAL_TARGETS, TARGETS  # noqa: E402
 
 OUT = ROOT / "static_export"
 
@@ -27,7 +27,8 @@ def main():
     if OUT.exists():
         shutil.rmtree(OUT)
     exported = {}
-    for key, t in TARGETS.items():
+    for key in REAL_TARGETS:
+        t = TARGETS[key]
         if not load_index(key):
             print(f"[{key}] no cache - skipped")
             continue

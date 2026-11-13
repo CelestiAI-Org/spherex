@@ -16,7 +16,8 @@ sys.path.insert(0, str(ROOT))
 _TMP = Path(tempfile.mkdtemp(prefix="spherex_test_cache_"))
 os.environ["SPHEREX_CACHE_DIR"] = str(_TMP)  # must be set before importing api.*
 
-RA, DEC = 269.4521, 4.6934
+from api.targets import TARGETS  # noqa: E402
+RA, DEC = TARGETS["barnards-star"]["ra"], TARGETS["barnards-star"]["dec"]
 PIX = 6.2 / 3600  # SPHEREx pixel ~6.2 arcsec
 
 

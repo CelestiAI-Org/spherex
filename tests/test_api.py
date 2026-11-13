@@ -5,7 +5,7 @@ from PIL import Image
 
 from science.types import Frame
 
-BARNARD = dict(ra=269.4521, dec=4.6934)
+BARNARD = dict(ra=269.4521, dec=4.6934)  # catalogue (J2000) position; cache is centred on the 2026 position
 
 
 def test_health(client):
