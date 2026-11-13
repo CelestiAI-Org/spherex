@@ -1,0 +1,32 @@
+{
+  "target": "barnards-star",
+  "name": "Barnard's Star",
+  "ra": 269.4521,
+  "dec": 4.6934,
+  "fov_arcmin": 6.0,
+  "pipeline": "placeholder",
+  "placeholder": true,
+  "frames": [
+    {
+      "index": 0,
+      "url": "/sample_frames/0.png",
+      "mjd_start": 60000.0,
+      "mjd_end": 60000.8,
+      "n_images": 4
+    },
+    {
+      "index": 1,
+      "url": "/sample_frames/1.png",
+      "mjd_start": 60180.0,
+      "mjd_end": 60180.8,
+      "n_images": 4
+    },
+    {
+      "index": 2,
+      "url": "/sample_frames/2.png",
+      "mjd_start": 60360.0,
+      "mjd_end": 60360.8,
+      "n_images": 4
+    }
+  ]
+}

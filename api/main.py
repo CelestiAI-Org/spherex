@@ -33,6 +33,8 @@ app = FastAPI(title="SPHEREx time-lapse API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 RENDER_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/img", StaticFiles(directory=RENDER_DIR), name="img")
+if STATIC_EXPORT_DIR.exists():  # offline backup: pre-rendered frames.json + PNGs (scripts/export_static.py)
+    app.mount("/static", StaticFiles(directory=STATIC_EXPORT_DIR), name="static")
 
 
 # ---------- science plug-in point ----------
@@ -88,8 +90,16 @@ def compute_frames(key: str, ra: float, dec: float, fov: float):
     return build_frames(cutouts, ra, dec, fov)
 
 
+def static_frames(key: str):
+    """Pre-rendered /frames response from static_export/, or None."""
+    path = STATIC_EXPORT_DIR / key / "frames.json"
+    return json.loads(path.read_text()) if path.exists() else None
+
+
 def resolve_target(ra: float, dec: float):
     hit = find_by_coords(ra, dec)
+    if hit and not load_index(hit[0]) and static_frames(hit[0]):
+        return hit  # no live cache, but the static export can answer /frames
     if not hit or not load_index(hit[0]):
         raise HTTPException(404, f"No cached data near ra={ra}, dec={dec}. "
                                  f"Cached targets: {[k for k in TARGETS if load_index(k)]}")
@@ -102,7 +112,8 @@ def resolve_target(ra: float, dec: float):
 def health():
     return {"status": "ok",
             "pipeline": "science.pipeline" if _pipeline_ready() else "fallback",
-            "cached_targets": [k for k in TARGETS if load_index(k)]}
+            "cached_targets": [k for k in TARGETS if load_index(k)],
+            "static_targets": [k for k in TARGETS if static_frames(k)]}
 
 
 def _pipeline_ready() -> bool:
@@ -135,6 +146,8 @@ def resolve(name: str):
 @app.get("/frames")
 def frames(ra: float, dec: float, fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, le=60)):
     key, target = resolve_target(ra, dec)
+    if not load_index(key):
+        return static_frames(key)
     fov = min(fov, cached_fov(key))
     frs, source = compute_frames(key, round(target["ra"], 5), round(target["dec"], 5), round(fov, 3))
     if not frs:
@@ -154,6 +167,8 @@ def frames(ra: float, dec: float, fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, l
 def diff(ra: float, dec: float, a: int, b: int, fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, le=60)):
     """PNG difference of frames a and b (grey = no change, bright/dark = brighter/fainter in b)."""
     key, target = resolve_target(ra, dec)
+    if not load_index(key):
+        raise HTTPException(503, "/diff needs the cutout cache, which is not available on this server")
     fov = min(fov, cached_fov(key))
     frs, _ = compute_frames(key, round(target["ra"], 5), round(target["dec"], 5), round(fov, 3))
     for idx in (a, b):
