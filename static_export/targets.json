@@ -1,0 +1,222 @@
+{
+ "barnards-star": {
+  "name": "Barnard's Star",
+  "ra_cat": 269.45208,
+  "dec_cat": 4.69336,
+  "epoch_cat": 2000.0,
+  "pmra": -801.551,
+  "pmdec": 10362.394,
+  "ra": 269.44627154408244,
+  "dec": 4.768199512222222,
+  "frames": 3,
+  "spectrum_points": 349,
+  "channels": {
+   "blue": {
+    "detectors": [
+     1,
+     2
+    ],
+    "wavelength_um": [
+     0.74,
+     1.65
+    ]
+   },
+   "green": {
+    "detectors": [
+     3,
+     4
+    ],
+    "wavelength_um": [
+     1.63,
+     3.8
+    ]
+   },
+   "red": {
+    "detectors": [
+     5,
+     6
+    ],
+    "wavelength_um": [
+     3.8,
+     5.0
+    ]
+   }
+  }
+ },
+ "wise-0855-0714": {
+  "name": "WISE 0855-0714",
+  "ra_cat": 133.79512916666667,
+  "dec_cat": -7.245147222222222,
+  "epoch_cat": 2014.0,
+  "pmra": -8123.7,
+  "pmdec": 673.2,
+  "ra": 133.76783221785826,
+  "dec": -7.242903222222222,
+  "frames": 3,
+  "spectrum_points": 254,
+  "channels": {
+   "blue": {
+    "detectors": [
+     1,
+     2
+    ],
+    "wavelength_um": [
+     0.74,
+     1.63
+    ]
+   },
+   "green": {
+    "detectors": [
+     3,
+     4
+    ],
+    "wavelength_um": [
+     1.63,
+     3.83
+    ]
+   },
+   "red": {
+    "detectors": [
+     5,
+     6
+    ],
+    "wavelength_um": [
+     3.81,
+     5.0
+    ]
+   }
+  }
+ },
+ "eps-ind-b": {
+  "name": "Epsilon Indi B",
+  "ra_cat": 331.04415,
+  "dec_cat": -56.78284,
+  "epoch_cat": 2000.0,
+  "pmra": 3981.977,
+  "pmdec": -2466.832,
+  "ra": 331.0966472578766,
+  "dec": -56.800656008888886,
+  "frames": 4,
+  "spectrum_points": 425,
+  "channels": {
+   "blue": {
+    "detectors": [
+     1,
+     2
+    ],
+    "wavelength_um": [
+     0.75,
+     1.64
+    ]
+   },
+   "green": {
+    "detectors": [
+     3,
+     4
+    ],
+    "wavelength_um": [
+     1.61,
+     3.78
+    ]
+   },
+   "red": {
+    "detectors": [
+     5,
+     6
+    ],
+    "wavelength_um": [
+     3.81,
+     5.01
+    ]
+   }
+  }
+ },
+ "rw-aurigae": {
+  "name": "RW Aurigae",
+  "ra_cat": 76.95653,
+  "dec_cat": 30.40144,
+  "epoch_cat": 2000.0,
+  "pmra": 7.23,
+  "pmdec": -20.33,
+  "ra": 76.95659054099606,
+  "dec": 30.401293172222225,
+  "frames": 3,
+  "spectrum_points": 330,
+  "channels": {
+   "blue": {
+    "detectors": [
+     1,
+     2
+    ],
+    "wavelength_um": [
+     0.74,
+     1.65
+    ]
+   },
+   "green": {
+    "detectors": [
+     3,
+     4
+    ],
+    "wavelength_um": [
+     1.61,
+     3.85
+    ]
+   },
+   "red": {
+    "detectors": [
+     5,
+     6
+    ],
+    "wavelength_um": [
+     3.8,
+     5.01
+    ]
+   }
+  }
+ },
+ "r-draconis": {
+  "name": "R Draconis",
+  "ra_cat": 248.16761,
+  "dec_cat": 66.75498,
+  "epoch_cat": 2000.0,
+  "pmra": -20.643,
+  "pmdec": 6.149,
+  "ra": 248.16723223984235,
+  "dec": 66.75502440944445,
+  "frames": 3,
+  "spectrum_points": 216,
+  "channels": {
+   "blue": {
+    "detectors": [
+     1,
+     2
+    ],
+    "wavelength_um": [
+     0.73,
+     1.65
+    ]
+   },
+   "green": {
+    "detectors": [
+     3,
+     4
+    ],
+    "wavelength_um": [
+     1.62,
+     3.81
+    ]
+   },
+   "red": {
+    "detectors": [
+     5,
+     6
+    ],
+    "wavelength_um": [
+     3.8,
+     4.99
+    ]
+   }
+  }
+ }
+}

@@ -1,0 +1,26 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPHEREx wavelength slider</title>
+<style>body{background:#111;color:#ddd;font:15px sans-serif;margin:16px;max-width:760px}img{width:100%;max-width:702px;display:block;background:#000}
+input[type=range]{width:100%;max-width:702px}#info{margin:8px 0;font-variant-numeric:tabular-nums}</style>
+<h1>Wavelength slider</h1>
+<p>One image per SPHEREx band (102 = 6 detectors x 17 channels), all visits stacked, one brightness scale for every band.</p>
+<select id="t"></select>
+<div id="info">loading...</div>
+<input id="s" type="range" min="0" max="101" value="0">
+<img id="im" alt="band image">
+<script>
+const targets = ["barnards-star", "eps-ind-b", "rw-aurigae"];
+const sel = document.getElementById('t'), s = document.getElementById('s'), im = document.getElementById('im'), info = document.getElementById('info');
+let bands = [];
+targets.forEach(k => { const o = document.createElement('option'); o.value = k; o.textContent = k; sel.appendChild(o); });
+async function load() {
+  bands = (await (await fetch('/static/' + sel.value + '/bands.json')).json()).bands;
+  s.max = bands.length - 1; show();
+}
+function show() {
+  const b = bands[+s.value];
+  info.textContent = 'band ' + b.band_index + ' | detector ' + b.detector + ' | ' + b.wavelength_um_min.toFixed(3) + '-' + b.wavelength_um_max.toFixed(3) + ' um | ' + b.n_images + ' images';
+  if (b.webp_url) im.src = b.webp_url; else im.removeAttribute('src');
+}
+s.oninput = show; sel.onchange = load; load();
+</script>

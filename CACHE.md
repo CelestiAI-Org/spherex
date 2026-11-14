@@ -52,3 +52,9 @@ Set `SPHEREX_CACHE_DIR=/some/path` to point at a different cache folder.
 * `Cutout.wavelength_um` (optional, default None) is filled by `load_cutouts` from `WCS-WAVE` at the target's
   proper-motion-propagated position (the nearest edge pixel if the target is off-image). See DATA_REPORT.md for
   how many cutouts per target have one (all but 2-3 edge slivers).
+
+## cache_large/ (15 arcmin cutouts)
+
+Same layout as `cache/`, for the hero targets only (barnards-star, eps-ind-b, rw-aurigae); `load_cutouts(key)` and
+`target_dir(key)` prefer it automatically (override: `SPHEREX_USE_LARGE=0`, or `SPHEREX_CACHE_LARGE_DIR`). Cutouts are ~146x146 px
+(~410 KB each, EPSF table dropped), ~480 MiB in total. Photometry of the same exposure is identical to the 6' cutout.
