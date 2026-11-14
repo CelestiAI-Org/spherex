@@ -78,6 +78,15 @@ that one click starts the picture and the sound together.
 - **Comfort:** one flash that ramps over 300 ms, pulses below 2 per second, no strobing. With
   `prefers-reduced-motion` the camera stays still, there is no flash wash, ripple, heartbeat or
   whoosh, and sound plays at about a third of the level.
+- **Arrival flash** (end of every warm zoom): rises over 250 ms and peaks well below white (30 %
+  of that with reduced motion); it never jumps in a single frame.
+- **Bad pixels:** the black hole output, the bloom chain and the final composite all replace NaN /
+  Inf values and clamp extreme HDR values, so a stray bad pixel can't flash white or black.
+- **GPU context loss:** the 2D sky takes over, the intro ends, the menu comes back, and flyTo /
+  finish / reset still resolve, so searching keeps working.
+- **Cold API:** the page pings `/api/spherex/health` on load to start waking the free API. A 502 /
+  503 / 504 is retried once with "Waking the SPHEREx data service…"; a second failure shows a
+  friendly message and a new search can be started at once.
 - **Tiers:** low gets a simpler shell, fewer ejecta, no ripple refraction, and fewer voices in
   the drone, shimmer and pad.
 

@@ -61,7 +61,7 @@ with sync_playwright() as p:
         assert '_color.webp' in page.locator('#observation-image').get_attribute('src')
         boxes = page.evaluate('''() => { const box=s=>{const r=document.querySelector(s).getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}};return {viewer:box('#viewer'),top:box('.observation-top'),bottom:box('.observation-controls'),left:box('.observation-info'),right:box('.observation-preview')}; }''')
         assert abs(boxes['viewer']['x']-120)<1 and abs(boxes['viewer']['y']-120)<1, boxes
-        assert abs(boxes['top']['h']/boxes['bottom']['h']-6)<.05, boxes
+        assert boxes['top']['h'] > 4*boxes['bottom']['h'], boxes  # controls row now sizes to its content (grid rows 1fr auto)
         assert abs(boxes['right']['w']/boxes['left']['w']-2)<.05, boxes
         axis=page.locator('[data-role=wavelength-axis]').bounding_box()
         colour=page.locator('[data-role=wavelength-colour]').bounding_box()

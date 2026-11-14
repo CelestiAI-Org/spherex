@@ -17,6 +17,7 @@ export class Flight {
         this.speed = 0;
         this.speedTarget = 0;
         this.flash = 0;
+        this.flashRise = false;
         this.token = 0;
         this.travelled = 0;
         this.minDone = Promise.resolve();
@@ -87,7 +88,7 @@ export class Flight {
             rig.animateTo({ fov: 34, duration: 1.5, easing: ease.outCubic });
             await sleep(950);
             if (token !== this.token) return false;
-            this.flash = 1;
+            this.flashRise = true;     // ramps up over 250 ms in update(), never a one-frame jump
         }
         this.phase = "data";
         state.exposureTarget = 0.62;
@@ -103,6 +104,7 @@ export class Flight {
         const { rig, state, home } = this;
         this.phase = "return";
         this.speedTarget = 0;
+        this.flashRise = false;
         rig.inputEnabled = false;
         this.setBodyState("flying");
         state.exposureTarget = 0;
@@ -149,11 +151,15 @@ export class Flight {
 
         this.streaks.update(dt, this.speed);
         rig.shake = this.reducedMotion ? 0 : this.speed * this.speed * 0.06;
-        this.flash = Math.max(0, this.flash - dt * 1.6);
+        // Arrival flash: rise over 250 ms, then a soft decay (photosensitivity: no instant white frame).
+        if (this.flashRise) {
+            this.flash = Math.min(1, this.flash + dt / 0.25);
+            if (this.flash >= 1) this.flashRise = false;
+        } else this.flash = Math.max(0, this.flash - dt * 1.6);
         const u = post.uniforms;
         u.uZoomBlur.value = this.speed * (this.reducedMotion ? 0.35 : 0.9);
         u.uWarm.value = this.speed * 0.32 + this.flash * 0.25;
-        u.uFlash.value = this.flash * this.flash * 1.4;
+        u.uFlash.value = this.flash * this.flash * (this.reducedMotion ? 0.3 : 0.9);
     }
 
     get labelsVisible() {
