@@ -1,8 +1,66 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
+@{
+    ViewData["Title"] = "SPHEREx Explorer";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<div class="explorer">
+    @* Jonty: mount the Three.js canvas inside this container. *@
+    <div id="sky-scene" aria-label="Sky scene"></div>
+
+    <header class="explorer-heading">
+        <h1>SPHEREx Explorer</h1>
+    </header>
+
+    <aside class="target-menu" aria-label="Target selection">
+        <div id="target-panel" class="ui-panel">
+            <h2>Find a target</h2>
+            <form id="target-form">
+                <label for="search-mode">Search by</label>
+                <select id="search-mode">
+                    <option value="name">Target name</option>
+                    <option value="coordinates">RA / Dec</option>
+                </select>
+
+                <div id="name-fields">
+                    <label for="target-name">Target name</label>
+                    <input id="target-name" name="name" placeholder="Barnard's Star" required />
+                </div>
+
+                <fieldset id="coordinate-fields" hidden disabled>
+                    <legend>Coordinates (degrees)</legend>
+                    <label for="ra">RA</label>
+                    <input id="ra" name="ra" type="number" min="0" max="359.999999" step="any" required />
+                    <label for="dec">Dec</label>
+                    <input id="dec" name="dec" type="number" min="-90" max="90" step="any" required />
+                </fieldset>
+
+                <label for="fov">Field of view (arcmin)</label>
+                @* Provisional unit; confirm with the data API before integration. *@
+                <input id="fov" name="fov" type="number" min="0.1" step="any" value="10" required />
+                <button type="submit">Explore</button>
+            </form>
+        </div>
+        <button id="menu-toggle" type="button" aria-expanded="true" aria-controls="target-panel">☰ Targets</button>
+    </aside>
+
+    <p id="status" class="ui-panel status" role="status" aria-live="polite" hidden></p>
+
+    @* UI placeholder only: open this section once observation data is connected. *@
+    <section id="viewer" class="ui-panel viewer" aria-labelledby="viewer-title" hidden>
+        <h2 id="viewer-title">Observation viewer</h2>
+        <button id="back-to-sky" type="button">Back to sky</button>
+        <div id="frame-container"></div>
+        <div class="viewer-controls">
+            <button type="button" disabled>Previous</button>
+            <button type="button" disabled>Play</button>
+            <button type="button" disabled>Next</button>
+            <label>Interval <select disabled><option>0.5 s</option></select></label>
+            <label>Zoom <input type="range" min="1" max="4" value="1" disabled /></label>
+        </div>
+        <dl><dt>Observation date</dt><dd>—</dd><dt>Source</dt><dd>—</dd></dl>
+        <button type="button" disabled>Copy share link</button>
+    </section>
 </div>
+
+@section Scripts {
+    <script src="~/js/ui.js" asp-append-version="true"></script>
+}
