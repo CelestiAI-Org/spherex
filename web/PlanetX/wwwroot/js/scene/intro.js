@@ -304,6 +304,9 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
     }
 
     function start() {
+        if (menu) menu.hidden = true;
+        document.getElementById("target-panel").hidden = true;
+        document.getElementById("menu-toggle").setAttribute("aria-expanded", "false");
         active = true;
         t = 0;
         captionIndex = -1;
@@ -346,6 +349,7 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
         caption.classList.remove("is-on");
         skipButton.hidden = true;
         document.body.classList.remove("in-intro");
+        if (menu) menu.hidden = false;
         blackHole.setFade(1, 1);
         post.uniforms.uRipple.value.w = 0;
         if (tier) post.setTier(tier);                      // restores flare and streak
