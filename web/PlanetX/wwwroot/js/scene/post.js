@@ -16,7 +16,13 @@ uniform vec2 uTexel;
 uniform float uThreshold, uKnee;
 uniform bool uPrefilter;
 varying vec2 vUv;
-vec3 s(vec2 o) { return min(texture2D(tSrc, vUv + uTexel * o).rgb, vec3(6e4)); }
+// Drop NaN / Inf / absurdly bright samples before they spread through the bloom chain
+// (they showed up as random white blocks in bloom, flare and streak).
+vec3 s(vec2 o) {
+    vec3 c = texture2D(tSrc, vUv + uTexel * o).rgb;
+    if (!(c.r >= 0.0 && c.g >= 0.0 && c.b >= 0.0 && c.r < 64.0 && c.g < 64.0 && c.b < 64.0)) c = vec3(0.0);
+    return c;
+}
 vec3 prefilter(vec3 c) {
     float br = max(c.r, max(c.g, c.b));
     float rq = clamp(br - uThreshold + uKnee, 0.0, 2.0 * uKnee);
