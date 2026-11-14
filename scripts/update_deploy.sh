@@ -38,7 +38,7 @@ fi
 SRC_SHA=$(git rev-parse --verify "$SRC^{commit}")
 
 # --- the whitelist of paths that go into the deploy branch ------------------------------------------
-INCLUDE='^(Dockerfile|\.dockerignore|requirements\.txt|render\.yaml)$|^api/[^/]+\.(py|json)$|^science/[^/]+\.py$|^static_export/'
+INCLUDE='^(Dockerfile|[.]dockerignore|requirements[.]txt|render[.]yaml)$|^api/[^/]+[.](py|json)$|^science/[^/]+[.]py$|^static_export/'
 EXCLUDE='^api/sample_frames'
 
 # --- build the tree in a throw-away index (the real index and working tree are not used) -------------
