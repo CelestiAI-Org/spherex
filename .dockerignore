@@ -2,5 +2,5 @@
 .venv
 __pycache__
 .pytest_cache
-cache/rendered
+cache/
 tests
