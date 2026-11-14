@@ -5,10 +5,8 @@ forward by proper motion to MID_SURVEY_EPOCH, because several targets move by
 arcminutes between J2000 and the SPHEREx observations (Barnard's Star ~4.5').
 `ra_cat`/`dec_cat` are the catalogue position at `epoch_cat`.
 
-NOTE: proper motions below are from the published values (Gaia DR3 for Barnard's
-Star and eps Ind B) typed in by hand because SIMBAD was unreachable when this was
-written - double-check them against SIMBAD when convenient. Accuracy needed is
-only ~arcsec, far below the cutout size.
+NOTE: proper motions below were checked against SIMBAD on 2026-11-14 (WISE 0855 pmdec
+had the wrong sign before). Accuracy needed is only ~arcsec, far below the cutout size.
 """
 import math
 
@@ -18,16 +16,16 @@ DEFAULT_FOV_ARCMIN = 6.0  # cutout field of view cached per target (arcmin)
 # pmra includes the cos(dec) factor (SIMBAD convention), mas/yr
 _CATALOGUE = {
     "barnards-star": dict(name="Barnard's Star", ra_cat=269.45208, dec_cat=4.69336, epoch_cat=2000.0,
-                          pmra=-802.8, pmdec=10362.4),
+                          pmra=-801.551, pmdec=10362.394),
     "wise-0855-0714": dict(name="WISE 0855-0714", ra_cat=(8 + 55 / 60 + 10.831 / 3600) * 15,
                            dec_cat=-(7 + 14 / 60 + 42.53 / 3600), epoch_cat=2014.0,
-                           pmra=-8118.0, pmdec=-681.0),
+                           pmra=-8123.7, pmdec=673.2),
     "eps-ind-b": dict(name="Epsilon Indi B", ra_cat=331.04415, dec_cat=-56.78284, epoch_cat=2000.0,
-                      pmra=3966.0, pmdec=-2536.0),
+                      pmra=3981.977, pmdec=-2466.832),
     "rw-aurigae": dict(name="RW Aurigae", ra_cat=76.95653, dec_cat=30.40144, epoch_cat=2000.0,
-                       pmra=0.0, pmdec=0.0),
+                       pmra=7.23, pmdec=-20.33),
     "r-draconis": dict(name="R Draconis", ra_cat=248.16761, dec_cat=66.75498, epoch_cat=2000.0,
-                       pmra=0.0, pmdec=0.0),
+                       pmra=-20.643, pmdec=6.149),
     # synthetic target written by scripts/make_fake_cutouts.py - not real data
     "fake_mover": dict(name="Fake mover (synthetic)", ra_cat=150.0, dec_cat=2.0, epoch_cat=2026.0,
                        pmra=0.0, pmdec=0.0, fake=True),
