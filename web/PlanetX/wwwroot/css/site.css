@@ -223,11 +223,16 @@ body.in-intro::before, body.in-intro::after { transform: none; }
 }
 .intro-replay::before { content: "↻ "; color: var(--warm); }
 .intro-gate {
-    position: fixed; inset: 0; z-index: 6; display: grid; place-content: center; gap: 18px;
+    position: fixed; inset: 0; z-index: 6; display: grid; place-content: center; justify-items: center; gap: 18px;
     border: 0; border-radius: 0; background: rgba(2, 3, 11, 0.55); color: var(--ink); cursor: pointer;
     -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 }
 .intro-gate:hover:not(:disabled) { background: rgba(2, 3, 11, 0.5); }
+.intro-gate { transition: opacity 0.9s var(--ease), display 0.9s allow-discrete; }
+.intro-gate[hidden] { opacity: 0; }
+.intro-gate em { font: 400 11px/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-faint); font-style: normal; }
+/* While the gate is up, the menu and sound button stay reachable above it. */
+body.is-gated .target-menu, body.is-gated .sound-toggle { z-index: 7; }
 .intro-gate span { font: 600 12px/1 var(--mono); letter-spacing: 0.34em; text-transform: uppercase; color: var(--ink-dim); }
 .intro-gate strong {
     font: 300 clamp(20px, 2.6vw, 30px)/1 var(--sans); letter-spacing: 0.12em;

@@ -16,7 +16,7 @@
 // every temporary node is stopped and disconnected when it ends.
 // Flags: ?sound=off disables sound. The on/off button's choice is remembered in localStorage.
 
-const PREF_KEY = "spherex.sound";
+const PREF_KEY = "spherex.sound.v2";
 const MASTER = 0.25;                    // about -12 dB, applied after the limiter
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
@@ -32,6 +32,7 @@ export function createSound({ reduced = false, debug = false } = {}) {
     const oneShots = new Set();
     const fired = {};
     let nextBeat = 5.2, lastSync = -1, muteTimer = 0;
+    let unlockedAt = -1e9;              // when a gesture last started the audio
 
     function readPref() { try { return localStorage.getItem(PREF_KEY) !== "off"; } catch { return true; } }
     function writePref() { try { localStorage.setItem(PREF_KEY, wanted ? "on" : "off"); } catch { /* private mode */ } }
@@ -155,8 +156,12 @@ export function createSound({ reduced = false, debug = false } = {}) {
     }
     function unlock() {
         if (!wanted) return;
-        if (!ctx) init();
-        else if (ctx.state === "suspended" && !document.hidden) ctx.resume();
+        if (!ctx) {
+            init();
+            unlockedAt = performance.now();
+        } else if (ctx.state === "suspended" && !document.hidden) {
+            ctx.resume();
+        }
     }
     for (const type of ["pointerdown", "keydown", "touchstart"]) addEventListener(type, unlock, { capture: true, passive: true });
     document.addEventListener("visibilitychange", () => {
@@ -165,6 +170,12 @@ export function createSound({ reduced = false, debug = false } = {}) {
         else if (wanted) ctx.resume();
     });
     button.addEventListener("click", () => {
+        // The press that started the audio (handled by unlock above, on pointerdown/keydown) must
+        // not also count as a toggle, or sound would switch straight off again.
+        if (wanted && performance.now() - unlockedAt < 600) {
+            label();
+            return;
+        }
         wanted = !wanted;
         writePref();
         clearTimeout(muteTimer);

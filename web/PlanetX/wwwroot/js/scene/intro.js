@@ -14,7 +14,8 @@ import { DEG, clamp01, ease, rng } from "./util.js";
 //
 // Comfort: a single flash ramping over >= 200 ms, pulses below 2 Hz, no strobing. With
 // prefers-reduced-motion a gentle crossfade version plays (no flash, ripple, shake or camera move).
-// It plays on every page load. Flags: ?intro=off disables it; ?gate=1 waits for a click first.
+// It plays on every page load, after a "Click to begin" screen. Flags: ?intro=off disables it;
+// ?gate=0 starts it without waiting for the click.
 // Sound comes from scene/audio.js, driven by this timeline through sound.sync(t).
 
 const DURATION = 25;
@@ -260,20 +261,21 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
     let dustPassed = -1;
 
     const shouldPlay = flag !== "off";                  // plays on every load unless ?intro=off
-    // ?gate=1: a "Click to begin" screen holds the first frame so the presenter starts picture
-    // and sound together.
-    let gatePending = search.get("gate") === "1" && shouldPlay;
+    // A "Click to begin" screen holds the first frame, so one click starts picture and sound
+    // together (browsers only allow audio after a gesture). ?gate=0 skips it.
+    let gatePending = search.get("gate") !== "0" && shouldPlay;
     let held = false;
     const gate = document.createElement("button");
     gate.type = "button";
     gate.className = "intro-gate";
     gate.hidden = true;
-    gate.innerHTML = "<span>SPHEREx Explorer</span><strong>Click to begin</strong>";
+    gate.innerHTML = "<span>SPHEREx Explorer</span><strong>Click to begin</strong><em>Best with sound</em>";
     document.body.appendChild(gate);
     function begin() {
         if (!held) return;
         held = false;
         gate.hidden = true;
+        document.body.classList.remove("is-gated");
         skipButton.hidden = false;
         sound?.startIntro();
     }
@@ -301,6 +303,7 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
         held = gatePending;
         gatePending = false;
         gate.hidden = !held;
+        document.body.classList.toggle("is-gated", held);
         skipButton.hidden = held;
         if (!held) sound?.startIntro();
         rig.inputEnabled = false;
@@ -338,6 +341,7 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
         rig.inputEnabled = true;
         held = false;
         gate.hidden = true;
+        document.body.classList.remove("is-gated");
         sound?.endIntro();
         if (cut) {
             if (rig.anim) { rig.anim.resolve(false); rig.anim = null; }
