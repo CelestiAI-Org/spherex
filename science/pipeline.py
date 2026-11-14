@@ -1,6 +1,7 @@
 """Science pipeline (Futa): cutouts -> one combined frame per epoch, and a difference image.
 
 build_frames steps:
+  0. optionally keep only some detectors (detectors=...)
   1. drop unusable cutouts (target outside the image, too few valid pixels)
   2. sort by time and split into epochs (a gap longer than EPOCH_GAP_DAYS starts a new epoch)
   3. clean each cutout: mask bad pixels with BAD_PIXEL_MASK, subtract the median level
@@ -76,9 +77,20 @@ def _common_wcs(ra, dec, fov_arcmin, pixel_arcsec):
     return w, (n, n)
 
 
-def build_frames(cutouts: list[Cutout], ra: float, dec: float, fov_arcmin: float) -> list[Frame]:
+def build_frames(cutouts: list[Cutout], ra: float, dec: float, fov_arcmin: float,
+                 detectors=None) -> list[Frame]:
+    """detectors: optional iterable of detector numbers (1-6) to stack, e.g. {5, 6}.
+
+    None (default) uses every detector. A faint target such as WISE 0855 is only visible at the
+    longest wavelengths (D5+D6, 3.8-5.0 um); stacking all detectors washes the signal out.
+    """
     if not cutouts:
         return []
+    if detectors is not None:
+        wanted = {int(d) for d in detectors}
+        cutouts = [c for c in cutouts if c.detector in wanted]
+        if not cutouts:
+            raise ValueError(f"no cutouts for detectors {sorted(wanted)}")
     center = SkyCoord(ra * u.deg, dec * u.deg)
     usable = _usable(cutouts, center)
     if not usable:
