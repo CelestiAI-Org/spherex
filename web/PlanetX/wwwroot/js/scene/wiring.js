@@ -15,6 +15,13 @@ export function wireDemo(scene) {
         if (!response.ok) throw new Error((await response.json()).error || `HTTP ${response.status}`);
         return response.json();
     };
+    // Only ask for band images where the API has them (avoids a 404 per target without bands).
+    let catalogue = null;
+    const hasBands = async key => {
+        catalogue ??= request("targets", {}).catch(() => null);
+        const entry = (await catalogue)?.find?.(t => t.key === key);
+        return entry ? entry.has_bands !== false : true;
+    };
     const back = document.getElementById("back-to-sky");
     if (!form || !mode || !status || !viewer) return;
 
@@ -53,12 +60,20 @@ export function wireDemo(scene) {
         say(`Travelling to ${label}…`);
         // The data request runs during the flight; the flight hides however long it takes.
         const data = (async () => {
-            await target;
+            const where = await target;
+            // Coordinates or a resolved name with no key: the API matches the nearest cached
+            // target within 10 arcmin, so a search near Barnard's Star still opens its frames.
+            let nearby = null;
+            if (!key && Number.isFinite(where?.ra) && Number.isFinite(where?.dec)) {
+                nearby = await request("frames", { ra: where.ra, dec: where.dec }).catch(() => null);
+                if (nearby?.target) { key = nearby.target; label = `${nearby.name} (${label})`; }
+            }
             if (!key) return { frames: null, extras: {} };
             const [frames, ...extras] = await Promise.all([
-                request("frames", { target: key }),
-                ...["spectrum", "frames_by_detector", "frames_by_band"].map(endpoint =>
-                    request(endpoint, { target: key }).catch(() => null))
+                nearby ?? request("frames", { target: key }),
+                ...["spectrum", "frames_by_detector", "frames_by_band"].map(async endpoint =>
+                    endpoint === "frames_by_band" && !(await hasBands(key)) ? null
+                        : request(endpoint, { target: key }).catch(() => null))
             ]);
             return { frames, extras: { spectrum: extras[0], detectors: extras[1], bands: extras[2] } };
         })();
@@ -70,7 +85,7 @@ export function wireDemo(scene) {
             say(frames ? "" : `No cached SPHEREx frames for ${label}.`);
         } catch (error) {
             if (error?.name === "AbortError") return;
-            say(`Could not reach ${label}: ${error.message}`);
+            say(/HTTP 404/.test(error.message) ? `Could not find "${label}". Try another name or RA / Dec.` : `Could not reach ${label}: ${error.message}`);
             await scene.reset();
         } finally {
             busy = false;

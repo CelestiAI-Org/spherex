@@ -34,6 +34,10 @@ same calls still resolve, on a 2D fallback sky.
 `scene/wiring.js` connects the existing target form to the contract. It resolves the name, flies
 there, loads cached frames, spectrum, detector and band data, then opens the observation
 workspace. Disable this integration with `?wiring=off` when working on the scene alone.
+Names match the five cached targets loosely (case, spaces and punctuation ignored, plus aliases
+such as "Eps Indi B", "WISE 0855", "RW Aur" in `scene/targets.js`). Coordinates, or a resolved name
+with no cached key, ask `/frames?ra=&dec=`, which opens the nearest cached target within 10 arcmin.
+Band images are only requested for targets that `/targets` lists with `has_bands`.
 
 ## URL flags and keys
 
@@ -98,12 +102,13 @@ How to record and add them:
    slot (3.7 s). You may say different words from the captions; then edit the caption text in
    `LINES` to match.
 3. Export as MP3 named `line1.mp3` to `line5.mp3` and put them in `wwwroot/audio/voice/`.
+   List the files you added in `wwwroot/audio/voice/voice.json`, e.g.
+   `{ "files": ["line1.mp3", "line2.mp3", "line3.mp3", "line4.mp3", "line5.mp3"] }`.
 4. Restart `dotnet run` (the server only picks up new files on start) and hard-reload.
 
 What the page does with them:
 
-- A missing file is skipped and its caption still shows. The browser's console will list a 404
-  for each missing file; that is expected and harmless.
+- A line not listed in `voice.json` is skipped without a request, and its caption still shows.
 - While a line plays, the music and effects dip by about 9 dB and come back afterwards. The voice
   goes through the same limiter and master volume as everything else.
 - A caption stays on screen for as long as its line is being spoken.
@@ -186,7 +191,9 @@ playback mode, colour/grayscale, band and detector selection.
 
 With .NET 10 and Python Playwright installed, build PlanetX and run
 `web/tests/viewer_smoke.py` with the application at localhost:5189 and
-`SpherexApi__BaseUrl=http://127.0.0.1:5190/`. The test hosts checked-in exports on 5190
+`SpherexApi__BaseUrl=http://127.0.0.1:5190/` (also set `ASPNETCORE_ENVIRONMENT=Development`
+when not using a launch profile, or static files are not served). The Targets menu starts closed,
+so the test opens it first. The test hosts checked-in exports on 5190
 and tests menu collapse, layout ratios, date modes, zoom/pan, detector/band selection,
 share round-trip and mobile overflow. The browser uses the fallback sky to keep the
 check independent of GPU performance; it does not test Three.js shader appearance.

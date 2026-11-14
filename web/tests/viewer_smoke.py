@@ -37,6 +37,7 @@ with sync_playwright() as p:
         page.goto('http://127.0.0.1:5189/?quality=low&intro=off')
         page.wait_for_load_state('networkidle')
         page.wait_for_function('!!window.spherexScene',timeout=30000)
+        page.locator('#menu-toggle').click()  # the Targets menu starts closed
         page.locator('#target-name').fill("Barnard's Star")
         page.locator('#target-form button[type=submit]').click()
         expect(page.locator('#target-panel')).to_be_hidden()
