@@ -79,7 +79,12 @@ def test_frames_by_detector(client):
         lo, hi = dets[d]["wavelength_range_um"]
         assert lo <= hi and abs((lo + hi) / 2 - (1.0 if d == 1 else 3.0)) < 0.05
         img = Image.open(io.BytesIO(client.get(dets[d]["png_url"]).content))
-        assert list(img.size[::-1]) == frames_shape and np.asarray(img).max() <= 255
+        assert list(img.size[::-1]) == body["large_shape"] == [x * 6 for x in frames_shape]
+        assert Image.open(io.BytesIO(client.get(dets[d]["png_url_native"]).content)).size == tuple(frames_shape[::-1])
+        assert dets[d]["channel"] == "blue"                         # detectors 1+2 -> blue
+    color = Image.open(io.BytesIO(client.get(body["png_url_color"]).content))
+    assert color.mode == "RGB" and list(color.size[::-1]) == body["large_shape"]
+    assert body["color_channels"]["blue"]["wavelength_um"] is not None and body["color_channels"]["red"]["wavelength_um"] is None
     for d in (3, 4, 5, 6):                                          # no data: reported, not hidden
         assert dets[d]["png_url"] is None and dets[d]["n_images"] == 0 and "note" in dets[d]
 

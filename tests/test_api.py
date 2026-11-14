@@ -31,7 +31,16 @@ def test_frames_and_images(client):
     img = client.get(body["frames"][0]["url"])
     assert img.status_code == 200
     h, w = body["frame_shape"]
-    assert Image.open(io.BytesIO(img.content)).size == (w, h)
+    up = body["upscale"]
+    assert up == 6 and body["large_shape"] == [h * up, w * up]
+    assert Image.open(io.BytesIO(img.content)).size == (w * up, h * up)             # `url` is the large image
+    f0 = body["frames"][0]
+    assert f0["png_url_large"] == f0["url"]
+    native = Image.open(io.BytesIO(client.get(f0["png_url_native"]).content))
+    assert native.size == (w, h)
+    color = Image.open(io.BytesIO(client.get(f0["png_url_color"]).content))
+    assert color.mode == "RGB" and color.size == (w * up, h * up)
+    assert body["stretch"]["type"] == "asinh" and body["color_channels"]["blue"]["detectors"] == [1, 2]
 
 
 def test_frames_unknown_location_404(client):
