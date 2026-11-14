@@ -1,9 +1,9 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js";
 
-const container = document.getElementById("viewer-container");
+const container = document.getElementById("sky-scene");
 
 if (!container) {
-    throw new Error('Could not find the element with id "viewer-container".');
+    throw new Error('Could not find the element with id "sky-scene".');
 }
 
 // Make the viewer a full-page background.
