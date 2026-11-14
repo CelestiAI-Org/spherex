@@ -44,6 +44,7 @@ the real integration is in place.
 | `?fps` or **Shift+F** | Overlay: fps, tier, render resolution, the black hole's buffer size and resolution scale, steps, octaves, and the governor's last step down. |
 | `?debug` | Exposes tuning handles on `spherexScene.debug`. |
 | `?wiring=off` | Turns off the demo wiring. |
+| `?asteroid=off` | Turns off the looping asteroid that falls into the black hole. |
 
 ## Automatic quality fallback
 

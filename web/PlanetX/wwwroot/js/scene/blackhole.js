@@ -1,5 +1,5 @@
 import * as THREE from "./three.js";
-import { HASH } from "./glsl.js";
+import { NOISE3 } from "./glsl.js";
 import { DEG, radec } from "./util.js";
 
 // Supermassive black hole with gravitational lensing, written for WebGL2.
@@ -29,6 +29,8 @@ const DISK_OUT = 13.0;
 const SPOTS = 7;          // bright clumps orbiting in the disk
 const DEBRIS = 24;        // glowing fragments of the infalling asteroid
 const TIDAL_RADIUS = 6.0; // where the asteroid is torn apart (r_s)
+const FRAGMENTS = 8;      // glowing pieces peeling off during the break-up
+const CRATERS = 6;
 
 const fullscreenVertex = /* glsl */ `
 varying vec2 vUv;
@@ -36,6 +38,7 @@ void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 
 const fragmentShader = /* glsl */ `
 #define MAX_STEPS 160
+#define USE_SHARDS 0
 #define MAX_OCTAVES 5
 uniform samplerCube uSky;
 uniform sampler2D uNoise;
@@ -51,11 +54,17 @@ uniform vec4 uSpots[${SPOTS}];   // radius, start angle, brightness, length alon
 uniform vec4 uDebris[${DEBRIS}]; // radius, angle, brightness, tail length (current state, from JS)
 uniform int uDebrisCount;
 uniform vec2 uDebrisRange;       // radial band the debris occupies, to skip the loop elsewhere
-uniform vec4 uRock;              // asteroid centre (local, r_s) and radius
-uniform vec4 uRockAxis;          // stretch axis (unit) and stretch factor (tidal elongation)
+uniform vec4 uRock;              // asteroid centre (disk frame, r_s) and radius
+uniform vec4 uRockAxis;          // tidal stretch axis (unit) and stretch factor
+uniform mat3 uRockRot;           // rock -> disk frame rotation (tumbling)
+uniform vec4 uCraters[${CRATERS}];   // crater centre direction (rock frame) and angular radius
+uniform vec4 uFrag[${FRAGMENTS}];    // fragment centre and radius
+uniform vec4 uFragAxis[${FRAGMENTS}];// fragment stretch axis and stretch
+uniform float uFragHeat[${FRAGMENTS}];
+uniform int uFragCount;
 uniform float uRockOn, uRockHeat, uEmitOut, uFlicker, uInnerFlare;
 varying vec2 vUv;
-${HASH}
+${NOISE3}
 
 const float R = ${R_SPHERE.toFixed(1)};
 const float B_MAX = ${B_MAX.toFixed(1)};
@@ -210,44 +219,120 @@ float haze(vec3 p0, vec3 p1) {
     return diskFlux(r) * min(path, 4.0 * h);
 }
 
-// The asteroid is an ellipsoid: a sphere of radius uRock.w stretched by uRockAxis.w along the
-// axis (and thinned across it, keeping its volume). Map into the space where it is a sphere.
-vec3 toRockSpace(vec3 p) {
+// ---- Asteroid. A signed-distance-field rock: an irregular base shape, lumps from 3D value
+// noise and a few bowl craters with raised rims. It tumbles (uRockRot) and near the hole is
+// stretched along its orbit by tides (uRockAxis). It is sphere traced inside each ray step, so
+// it is lensed, appears in secondary images and is hidden by the shadow like everything else.
+vec3 rockLocal(vec3 p) {
     vec3 q = p - uRock.xyz;
     float a = dot(q, uRockAxis.xyz);
-    return uRockAxis.xyz * (a / uRockAxis.w) + (q - uRockAxis.xyz * a) * sqrt(uRockAxis.w);
+    q = uRockAxis.xyz * (a / uRockAxis.w) + (q - uRockAxis.xyz * a) * sqrt(uRockAxis.w);
+    return transpose(uRockRot) * q / uRock.w;
 }
-// Exact segment / ellipsoid test (an affine map keeps straight segments straight).
-bool hitRock(vec3 a, vec3 b, out float t, out vec3 normal) {
-    vec3 A = toRockSpace(a), B = toRockSpace(b), D = B - A;
-    float rr = uRock.w;
-    float qa = dot(D, D), qb = 2.0 * dot(A, D), qc = dot(A, A) - rr * rr;
-    float disc = qb * qb - 4.0 * qa * qc;
-    if (disc < 0.0 || qa < 1e-8) return false;
-    t = (-qb - sqrt(disc)) / (2.0 * qa);
+float rockShape(vec3 lp) {
+    float base = length(lp * vec3(0.92, 1.18, 0.82)) - 1.0;           // potato, not a sphere
+    float lumps = vnoise(lp * 1.6 + 3.1) * 0.42 + vnoise(lp * 3.7 + 7.7) * 0.14 + vnoise(lp * 8.3 + 1.3) * 0.04;
+    vec3 dir = normalize(lp);
+    float craters = 0.0;
+    for (int i = 0; i < ${CRATERS}; i++) {
+        float x = length(dir - uCraters[i].xyz) / uCraters[i].w;
+        craters += x < 1.0 ? (x * x - 1.0) * 0.16 : 0.0;                // bowl
+        craters += exp(-pow((x - 1.0) / 0.28, 2.0)) * 0.045;            // raised rim
+    }
+    return base - lumps + 0.2 - craters;
+}
+// Distance in disk-frame units (conservative for the stretch and the noise).
+float rockSdf(vec3 p) {
+    return rockShape(rockLocal(p)) * uRock.w / sqrt(uRockAxis.w) * 0.55;
+}
+bool traceRock(vec3 a, vec3 b, out vec3 hitPos) {
+    vec3 d = b - a;
+    float len = length(d);
+    d /= len;
+    float rb = uRock.w * 1.55 * uRockAxis.w;                             // bounding sphere
+    vec3 oc = a - uRock.xyz;
+    float pb = dot(oc, d), pc = dot(oc, oc) - rb * rb;
+    float disc = pb * pb - pc;
+    if (disc < 0.0) return false;
+    float sq = sqrt(disc);
+    float t = max(-pb - sq, 0.0), t1 = min(-pb + sq, len);
+    if (t > t1) return false;
+    float eps = 0.004 * uRock.w;
+    for (int i = 0; i < 32; i++) {
+        vec3 p = a + d * t;
+        float dist = rockSdf(p);
+        if (dist < eps) { hitPos = p; return true; }
+        t += max(dist, eps);
+        if (t > t1) return false;
+    }
+    return false;
+}
+vec3 rockNormal(vec3 p) {
+    float e = 0.012 * uRock.w;
+    vec2 k = vec2(1.0, -1.0);
+    return normalize(k.xyy * rockSdf(p + k.xyy * e) + k.yyx * rockSdf(p + k.yyx * e)
+                   + k.yxy * rockSdf(p + k.yxy * e) + k.xxx * rockSdf(p + k.xxx * e));
+}
+// Hard warm key light from the inner disk, softer light from the disk plane, dark ambient,
+// thin cool rim, crater occlusion; when tidally heated, glowing fissures.
+vec3 shadeRock(vec3 p, vec3 dir) {
+    vec3 n = rockNormal(p);
+    vec3 lp = rockLocal(p);
+    // Fine surface relief from the gradient of high-frequency noise.
+    float h0 = vnoise(lp * 11.0);
+    vec3 g = vec3(vnoise(lp * 11.0 + vec3(0.06, 0, 0)), vnoise(lp * 11.0 + vec3(0, 0.06, 0)), vnoise(lp * 11.0 + vec3(0, 0, 0.06))) - h0;
+    n = normalize(n - uRockRot * g * 5.0);
+    float rp = length(p);
+    vec3 key = -p / rp;
+    vec3 fill = normalize(vec3(-p.x * 0.4, -sign(p.y) * 1.0, -p.z * 0.4));
+    float light = 2.6 * diskFlux(max(rp * 0.7, DISK_IN * 1.35)) + 0.35;
+    float ao = clamp(rockSdf(p + n * 0.25 * uRock.w) / (0.25 * uRock.w * 0.55), 0.0, 1.0);
+    float albedo = 0.09 + 0.09 * vnoise(lp * 3.2 + 5.0) + 0.04 * h0;
+    vec3 c = albedo * vec3(1.0, 0.7, 0.45) * light * (max(dot(n, key), 0.0) + 0.3 * max(dot(n, fill), 0.0)) * (0.45 + 0.55 * ao);
+    c += albedo * vec3(0.5, 0.6, 0.8) * 0.012;                                         // dark ambient
+    c += vec3(0.5, 0.65, 1.0) * pow(1.0 - max(dot(n, -dir), 0.0), 4.0) * 0.06 * light;  // thin rim
+    // Tidal heating: thin glowing fissures (ridges of the noise), not blotches.
+    // Tidal heating: a branching crack network (ridged fBm, mapped over the rock's surface)
+    // that opens up and glows as tides heat the rock, plus a dull glow on the face toward the hole.
+    vec3 sd = normalize(lp);
+    vec2 suv = vec2(atan(sd.z, sd.x) / TAU, acos(clamp(sd.y, -1.0, 1.0)) / 3.14159265) * vec2(2.0, 1.0);
+    float network = textureLod(uNoise, suv * 1.5, 0.0).b;
+    float cracks = smoothstep(0.82 - 0.12 * uRockHeat, 0.97, network) * smoothstep(0.15, 0.8, uRockHeat);
+    c += vec3(1.0, 0.32, 0.05) * cracks * 1.4 * uRockHeat;
+    c += vec3(0.45, 0.08, 0.01) * uRockHeat * uRockHeat * max(dot(n, key), 0.0) * 0.12;
+    return c * uDiskGain * 3.0;
+}
+
+#if USE_SHARDS
+// Fragments: small glowing shards (ellipsoids stretched along their orbits).
+bool hitShard(int i, vec3 a, vec3 b, out float t, out vec3 normal) {
+    vec4 f = uFrag[i], ax = uFragAxis[i];
+    vec3 qa = a - f.xyz, qb = b - f.xyz;
+    float ka = dot(qa, ax.xyz), kb = dot(qb, ax.xyz);
+    vec3 A = ax.xyz * (ka / ax.w) + (qa - ax.xyz * ka) * sqrt(ax.w);
+    vec3 B = ax.xyz * (kb / ax.w) + (qb - ax.xyz * kb) * sqrt(ax.w);
+    vec3 D = B - A;
+    float qq = dot(D, D), q1 = 2.0 * dot(A, D), q0 = dot(A, A) - f.w * f.w;
+    float disc = q1 * q1 - 4.0 * qq * q0;
+    if (disc < 0.0 || qq < 1e-10) return false;
+    t = (-q1 - sqrt(disc)) / (2.0 * qq);
     if (t < 0.0 || t > 1.0) return false;
-    vec3 ns = (A + t * D) / rr;
-    float k = dot(ns, uRockAxis.xyz);
-    normal = normalize(uRockAxis.xyz * k * uRockAxis.w + (ns - uRockAxis.xyz * k) / sqrt(uRockAxis.w));
+    vec3 ns = (A + t * D) / f.w;
+    float k = dot(ns, ax.xyz);
+    normal = normalize(ax.xyz * k * ax.w + (ns - ax.xyz * k) / sqrt(ax.w));
     return true;
 }
-// Dark rock lit by the disk (warm, brighter as it falls in), glowing as tides heat it up.
-vec3 shadeRock(vec3 p, vec3 n, vec3 dir) {
+vec3 shadeShard(int i, vec3 p, vec3 n, vec3 dir) {
+    float heat = uFragHeat[i];
+    float facing = max(dot(n, -dir), 0.0);
     float rp = length(p);
-    vec3 toHole = -p / rp;
-    vec3 toDisk = normalize(vec3(toHole.x, -sign(p.y) * 0.5, toHole.z));
-    float light = 2.4 * diskFlux(max(rp * 0.75, DISK_IN * 1.4)) + 0.04;
-    vec2 uv = vec2(atan(n.z, n.x) / TAU, n.y * 0.5 + 0.5) * vec2(2.0, 1.0);
-    float tex = textureLod(uNoise, uv, 1.0).g;
-    vec3 albedo = vec3(0.17, 0.15, 0.13) * (0.55 + 0.9 * tex);
-    float lit = max(dot(n, toHole), 0.0) + 0.6 * max(dot(n, toDisk), 0.0);
-    vec3 c = albedo * vec3(1.0, 0.72, 0.45) * lit * light * uDiskGain * 4.0;
-    float edge = pow(1.0 - abs(dot(n, uRockAxis.xyz)), 0.6);
-    // Tidal heating glows most where the rock faces us, fading softly toward its limb.
-    float facing = abs(dot(n, dir));
-    c += vec3(1.0, 0.36, 0.07) * uRockHeat * uRockHeat * (0.4 + tex) * (0.4 + 0.6 * edge) * facing * facing * 0.9;
-    return c;
+    float light = 2.6 * diskFlux(max(rp * 0.7, DISK_IN * 1.35)) + 0.35;
+    vec3 rock = vec3(0.12, 0.09, 0.07) * light * max(dot(n, -p / rp), 0.0);
+    float hot = max(dot(n, -p / rp), 0.0);                       // glowing on the face toward the hole
+    vec3 glow = mix(vec3(0.7, 0.12, 0.02), vec3(1.0, 0.55, 0.18), hot) * (0.25 + 0.75 * hot) * (0.4 + 0.6 * facing) * heat * 1.5;
+    return (rock + glow) * uDiskGain * 3.0;
 }
+#endif
 
 // Crisp point stars evaluated per pixel from the final ray direction, so lensed stars stretch
 // into arcs around the Einstein ring.
@@ -320,6 +405,9 @@ void main() {
         vec3 prev = x0;
         float travelled = length(x0 - ro);
         bool captured = false, escaped = false;
+        bool rockCandidate = false;
+        vec3 rockA = vec3(0.0), rockB = vec3(0.0), colAtRock = vec3(0.0);
+        float transmitAtRock = 1.0;
         float ringGlow = 0.0, glow = 0.0;
         for (int i = 0; i < MAX_STEPS; i++) {
             if (i >= uSteps) break;
@@ -342,18 +430,38 @@ void main() {
 
             vec3 pos = (c * e1 + s * e2) / u;
             float seg = length(pos - prev);
-            if (uRockOn > 0.5) {
-                // Cheap bounding check first, then the exact ellipsoid test.
+            if (uRockOn > 0.5 && !rockCandidate) {
+                // Only flag the first step that could touch the rock (cheap). The rock itself is
+                // traced and shaded once after the loop, which keeps this loop small and fast.
                 vec3 mid = 0.5 * (prev + pos) - uRock.xyz;
-                float reach = 0.5 * seg + uRock.w * uRockAxis.w + 0.1;
-                float tRock;
-                vec3 nRock;
-                if (dot(mid, mid) < reach * reach && hitRock(prev, pos, tRock, nRock)) {
-                    col += transmit * shadeRock(mix(prev, pos, tRock), nRock, normalize(pos - prev));
-                    transmit = 0.0;
-                    break;
+                float reach = 0.5 * seg + uRock.w * 1.6 * uRockAxis.w;
+                if (dot(mid, mid) < reach * reach) {
+                    rockCandidate = true;
+                    rockA = prev;
+                    rockB = pos;
+                    colAtRock = col;
+                    transmitAtRock = transmit;
                 }
             }
+#if USE_SHARDS
+            if (uFragCount > 0) {
+                bool shardHit = false;
+                for (int k = 0; k < ${FRAGMENTS}; k++) {
+                    if (k >= uFragCount) break;
+                    vec3 mid = 0.5 * (prev + pos) - uFrag[k].xyz;
+                    float reach = 0.5 * seg + uFrag[k].w * uFragAxis[k].w;
+                    float tS;
+                    vec3 nS;
+                    if (dot(mid, mid) < reach * reach && hitShard(k, prev, pos, tS, nS)) {
+                        col += transmit * shadeShard(k, mix(prev, pos, tS), nS, normalize(pos - prev));
+                        transmit = 0.0;
+                        shardHit = true;
+                        break;
+                    }
+                }
+                if (shardHit) break;
+            }
+#endif
             if (prev.y * pos.y < 0.0) {
                 float f = prev.y / (prev.y - pos.y);
                 vec3 hit = mix(prev, pos, f);
@@ -371,6 +479,16 @@ void main() {
             prev = pos;
             // Early exit once the disk has made the ray effectively opaque.
             if (transmit < 0.02) break;
+        }
+        // The rock, if a step came near it: everything gathered after that step lies behind it.
+        if (rockCandidate) {
+            vec3 rockHit;
+            if (traceRock(rockA, rockB, rockHit)) {
+                col = colAtRock + transmitAtRock * shadeRock(rockHit, normalize(rockB - rockA));
+                transmit = 0.0;
+                glow = 0.0;
+                captured = true;
+            }
         }
         // Rays still circling close to the hole when the step budget runs out are absorbed.
         if (!escaped && !captured && 1.0 / max(u, 1e-4) < 2.5) captured = true;
@@ -480,9 +598,15 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
         uDebris: { value: Array.from({ length: DEBRIS }, () => new THREE.Vector4()) },
         uDebrisCount: { value: 0 },
         uDebrisRange: { value: new THREE.Vector2(0, 0) },
-        uRock: { value: new THREE.Vector4(0, 0, 0, 0.85) },
+        uRock: { value: new THREE.Vector4(0, 0, 0, 0.36) },
         uRockAxis: { value: new THREE.Vector4(1, 0, 0, 1) },
         uRockOn: { value: 0 },
+        uRockRot: { value: new THREE.Matrix3() },
+        uCraters: { value: Array.from({ length: CRATERS }, () => new THREE.Vector4(1, 0, 0, 0.3)) },
+        uFrag: { value: Array.from({ length: FRAGMENTS }, () => new THREE.Vector4()) },
+        uFragAxis: { value: Array.from({ length: FRAGMENTS }, () => new THREE.Vector4(1, 0, 0, 1)) },
+        uFragHeat: { value: new Array(FRAGMENTS).fill(0) },
+        uFragCount: { value: 0 },
         uRockHeat: { value: 0 },
         uEmitOut: { value: DISK_OUT },
         uFlicker: { value: 1 },
@@ -525,75 +649,138 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
     const toHole = new THREE.Vector3();
     const look = new THREE.Vector3();
 
-    // ---- Asteroid event: falls in, is torn apart by tides, and its debris spirals into the disk.
-    // Runs on a loop: wait -> fall (plunging orbit, r ~ (1 - t/T)^(2/3)) -> disrupt (stretch,
-    // heat, shed debris) -> debris spirals in and flares at the inner edge -> wait.
-    const R_START = 14.5, FALL_T = 50, L_MOM = 0.05 * R_START * R_START, K_DEBRIS = 4.3;
-    const ev = { state: "wait", t: 6, count: 0, phi: 0, phiCam: 0, side: 1, debris: [], flare: 0, spawn: 0, released: 0 };
+    // ---- Asteroid event (?asteroid=off disables it). Loop: wait -> fall -> disrupt -> wait.
+    //  fall:    a small tumbling rock emerges from behind the hole on a plunging orbit,
+    //           r ~ (1 - t/T)^(2/3) with conserved angular momentum. It stays a plain solid rock
+    //           until it is close; only inside ~9 r_s do tides start to stretch and heat it.
+    //  disrupt: at 6 r_s glowing shards peel off its surface one by one and fall in on their own
+    //           slightly different orbits, stretching as they go; the rock shrinks and finally
+    //           shatters. Shards that reach ~4.5 r_s turn into the disk debris stream, which
+    //           spirals in and flares the inner edge.
+    const R_START = 14.5, FALL_T = 50, L_MOM = 0.05 * R_START * R_START, K_DEBRIS = 4.3, ROCK_R = 0.36;
+    const asteroidOn = new URLSearchParams(location.search).get("asteroid") !== "off";
+    const ev = { state: "wait", t: 6, count: 0, phi: 0, phiCam: 0, side: 1, debris: [], shards: [], flare: 0, spawn: 0, r: R_START };
     let seed = 99;
     let maxDebris = DEBRIS;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     const toLocal = new THREE.Matrix3();
     const camLocal = new THREE.Vector3();
-    const rockPos = new THREE.Vector3(), rockPrev = new THREE.Vector3();
+    const rockPos = new THREE.Vector3(), rockPrev = new THREE.Vector3(), tmp = new THREE.Vector3();
+    const tumbleAxis = new THREE.Vector3(0.3, 1, 0.2).normalize();
+    const tumble = new THREE.Quaternion(), spin = new THREE.Quaternion();
+    const rot4 = new THREE.Matrix4();
+    const smooth = (a, b, x) => { const t = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
     const fallRadius = t => R_START * Math.pow(Math.max(1 - t / FALL_T, 1e-4), 2 / 3);
-    function rockPoint(r, phi, out) {
-        const incl = 10 * DEG * (r / R_START);                 // settles toward the disk plane as it falls
+    function orbitPoint(r, phi, out, tilt = 1) {
+        const incl = 10 * DEG * (r / R_START) * tilt;          // settles toward the disk plane as it falls
         return out.set(r * Math.cos(phi), ev.side * r * Math.sin(incl) * Math.cos(phi - ev.phiCam), r * Math.sin(phi));
+    }
+    function newCraters() {
+        return Array.from({ length: CRATERS }, () => {
+            const v = new THREE.Vector3(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1).normalize();
+            return new THREE.Vector4(v.x, v.y, v.z, 0.22 + rnd() * 0.3);
+        });
     }
     function startEvent(camera) {
         toLocal.copy(basis).transpose();
         camLocal.copy(camera.position).sub(position).divideScalar(scale).applyMatrix3(toLocal);
         ev.phiCam = Math.atan2(camLocal.z, camLocal.x);
         ev.side = ev.count % 2 === 0 ? 1 : -1;
-        // Pre-run the fall to find how far round it travels, then aim the break-up just in front
-        // of the hole, alternating sides.
+        // Pre-run the fall to find how far round it travels, then aim the break-up in front of
+        // the hole, alternating sides.
         let phi = 0, t = 0;
         while (fallRadius(t) > TIDAL_RADIUS) { phi += (L_MOM / fallRadius(t) ** 2) / 30; t += 1 / 30; }
         ev.phi = ev.phiCam + (ev.count % 2 === 0 ? -0.5 : 0.65) - phi;
         ev.state = "fall";
         ev.t = 0;
-        ev.released = 0;
         ev.count++;
+        tumbleAxis.set(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).normalize();
+        uniforms.uCraters.value = newCraters();
     }
-    function spawnDebris(r, phi) {
-        if (ev.debris.length >= DEBRIS) return;
-        ev.debris.push({ r: r + (rnd() - 0.5) * 0.7, phi: phi + (rnd() - 0.5) * 0.25, age: 0, gain: 0.6 + rnd() * 0.6 });
+    // Solid shard objects (uFrag) read as flat blobs at this scale, so by default the break-up sheds
+    // thin glowing debris streaks instead. Set USE_SHARDS to true to bring the shards back.
+    const USE_SHARDS = false;
+    function peelShard() {
+        if (!USE_SHARDS) {
+            for (let i = 0; i < 3; i++) spawnDebris(ev.r, ev.phi - i * 0.04);
+            return;
+        }
+        if (ev.shards.length >= FRAGMENTS) return;
+        ev.shards.push({
+            r: ev.r + (rnd() - 0.4) * 0.5, phi: ev.phi + (rnd() - 0.5) * 0.12, dy: (rnd() - 0.5) * 0.5,
+            vr: 0.25 + rnd() * 0.35, omega: 0.85 + rnd() * 0.35, age: 0,
+            size: ROCK_R * (0.26 + rnd() * 0.22), pos: new THREE.Vector3(), prev: new THREE.Vector3(),
+        });
     }
     function updateEvent(dt, camera) {
         const u = uniforms;
         ev.t += dt;
+        if (!asteroidOn) { u.uRockOn.value = 0; u.uFragCount.value = 0; u.uDebrisCount.value = 0; return; }
+        let radius = 0;
         if (ev.state === "wait") {
-            u.uRockOn.value = 0;
-            if (ev.t > 10 && ev.debris.length === 0) startEvent(camera);
+            if (ev.t > 10 && ev.debris.length === 0 && ev.shards.length === 0) startEvent(camera);
         } else {
-            const r = ev.state === "fall" ? fallRadius(ev.t) : Math.max(TIDAL_RADIUS - (ev.t) * 0.55, 3.2);
-            ev.phi += (L_MOM / (r * r)) * dt;
+            ev.r = ev.state === "fall" ? fallRadius(ev.t) : Math.max(TIDAL_RADIUS - ev.t * 0.35, 4.2);
+            ev.phi += (L_MOM / (ev.r * ev.r)) * dt;
             rockPrev.copy(rockPos);
-            rockPoint(r, ev.phi, rockPos);
-            const heat = THREE.MathUtils.smoothstep(r, 9.5, TIDAL_RADIUS);   // 0 far out, 1 at the tidal radius
-            let stretch = 1 + 3 * heat, radius = 0.85 * Math.min(ev.t / 3, 1);
-            if (ev.state === "fall" && r <= TIDAL_RADIUS + 0.01) {
+            orbitPoint(ev.r, ev.phi, rockPos);
+            const heat = smooth(7.6, TIDAL_RADIUS, ev.r);                 // 0 until close, 1 at the tidal radius
+            let stretch = 1 + 0.35 * heat;
+            radius = ROCK_R * Math.min(ev.t / 2.5, 1);
+            if (ev.state === "fall" && ev.r <= TIDAL_RADIUS + 0.01) {
                 ev.state = "disrupt";
                 ev.t = 0;
+                ev.spawn = 0;
             }
             if (ev.state === "disrupt") {
-                const k = Math.min(ev.t / 3.5, 1);
-                stretch = 4 + 6 * k;
-                radius = 0.85 * (1 - k * k);
+                const k = Math.min(ev.t / 4.5, 1);
+                stretch = 1.35 + 0.9 * k;
+                radius = ROCK_R * (1 - 0.55 * k);
                 ev.spawn += dt;
-                while (ev.spawn > 0.12) { ev.spawn -= 0.12; spawnDebris(r, ev.phi); }
-                if (k >= 1) { ev.state = "wait"; ev.t = 0; }
+                while (ev.spawn > 0.35) { ev.spawn -= 0.35; peelShard(); }
+                if (k >= 1) {                                         // the remaining core shatters
+                    for (let i = 0; i < 3; i++) peelShard();
+                    radius = 0;
+                    ev.state = "wait";
+                    ev.t = 0;
+                }
             }
-            const axis = rockPos.clone().sub(rockPrev);
+            const axis = tmp.copy(rockPos).sub(rockPrev);
             if (axis.lengthSq() < 1e-10) axis.set(-Math.sin(ev.phi), 0, Math.cos(ev.phi));
             axis.normalize();
+            spin.setFromAxisAngle(tumbleAxis, dt * 0.55);
+            tumble.premultiply(spin).normalize();
+            u.uRockRot.value.setFromMatrix4(rot4.makeRotationFromQuaternion(tumble));
             u.uRock.value.set(rockPos.x, rockPos.y, rockPos.z, Math.max(radius, 0.001));
             u.uRockAxis.value.set(axis.x, axis.y, axis.z, stretch);
-            u.uRockOn.value = radius > 0.01 ? 1 : 0;
             u.uRockHeat.value = ev.state === "disrupt" ? 1 : heat;
         }
-        // Debris: Keplerian spiral inward, brightening as it heats; flares at the inner edge.
+        u.uRockOn.value = radius > 0.01 ? 1 : 0;
+
+        // Shards: each falls on its own orbit, stretching and glowing; deep in they join the stream.
+        for (let i = ev.shards.length - 1; i >= 0; i--) {
+            const f = ev.shards[i];
+            f.age += dt;
+            f.r -= f.vr * dt * Math.sqrt(TIDAL_RADIUS / f.r);
+            f.phi += f.omega * (L_MOM / (f.r * f.r)) * dt;
+            f.prev.copy(f.pos);
+            orbitPoint(f.r, f.phi, f.pos, 0.7).y += f.dy * Math.max(1 - f.age / 4, 0) * 0.3;
+            if (f.r < 4.5 || f.age > 7) {
+                for (let k = 0; k < 3; k++) spawnDebris(f.r, f.phi);
+                ev.shards.splice(i, 1);
+            }
+        }
+        ev.shards.slice(0, FRAGMENTS).forEach((f, i) => {
+            const ax = tmp.copy(f.pos).sub(f.prev);
+            if (ax.lengthSq() < 1e-10) ax.set(-Math.sin(f.phi), 0, Math.cos(f.phi));
+            ax.normalize();
+            u.uFrag.value[i].set(f.pos.x, f.pos.y, f.pos.z, f.size * Math.min(f.age / 0.4, 1));
+            u.uFragAxis.value[i].set(ax.x, ax.y, ax.z, 1.5 + f.age * 1.1);
+            u.uFragHeat.value[i] = Math.min(0.5 + f.age * 0.35, 1.3);
+        });
+        u.uFragCount.value = Math.min(ev.shards.length, FRAGMENTS);
+
+        // Debris stream in the disk plane: Keplerian spiral inward, flares at the inner edge.
         let maxR = DISK_OUT;
         for (let i = ev.debris.length - 1; i >= 0; i--) {
             const d = ev.debris[i];
@@ -607,14 +794,13 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
             }
             maxR = Math.max(maxR, d.r + 1);
         }
-        // Brightest (newest) fragments first, so a tier that draws fewer keeps the visible ones.
         const shown = ev.debris.slice(-maxDebris);
         let lo = Infinity, hi = 0;
         shown.forEach((d, i) => {
             lo = Math.min(lo, d.r - 0.9);
             hi = Math.max(hi, d.r + 0.9);
-            const brightness = Math.min(d.age / 0.8, 1) * Math.pow(TIDAL_RADIUS / d.r, 1.1) * 0.22 * d.gain;
-            u.uDebris.value[i].set(d.r, d.phi, brightness, Math.min(0.5 + d.age * 0.4, 5.5));
+            const brightness = Math.min(d.age / 0.8, 1) * Math.pow(TIDAL_RADIUS / d.r, 1.1) * 0.2 * d.gain;
+            u.uDebris.value[i].set(d.r, d.phi, brightness, Math.min(1.6 + d.age * 0.6, 6.5));
         });
         u.uDebrisCount.value = shown.length;
         u.uDebrisRange.value.set(shown.length ? lo : 0, shown.length ? hi : 0);
@@ -622,6 +808,10 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
         u.uEmitOut.value = Math.min(maxR, R_SPHERE);
         ev.flare *= Math.exp(-dt * 0.9);
         u.uInnerFlare.value = ev.flare;
+    }
+    function spawnDebris(r, phi) {
+        if (ev.debris.length >= DEBRIS) return;
+        ev.debris.push({ r: r + (rnd() - 0.5) * 0.5, phi: phi + (rnd() - 0.5) * 0.2, age: 0, gain: 0.6 + rnd() * 0.6 });
     }
 
     function resizeTarget() {
@@ -674,6 +864,11 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
         get shadowAngle() { return Math.atan(3.2 / DIST_RS); },
         get lensRadius() { return Math.atan(R_SPHERE / DIST_RS); },
         get event() { return ev; },
+        // Development helper: the asteroid's world position (for aiming the camera at it).
+        rockWorld() {
+            const r = uniforms.uRock.value;
+            return new THREE.Vector3(r.x, r.y, r.z).applyMatrix3(basis).multiplyScalar(scale).add(position);
+        },
         // Development helper (used via ?debug): fast-forward the asteroid event.
         advanceEvent(seconds, camera) {
             for (let t = 0; t < seconds; t += 0.05) updateEvent(0.05, camera);
