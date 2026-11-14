@@ -77,3 +77,16 @@ Images are from the **SPHEREx** mission (NASA), obtained from the **NASA/IPAC In
 * `quality: "low"` marks bands that are a single image, much noisier than the target's typical band, or with a large
   missing-data area. `noise_mjy_sr` is a pixel-to-pixel noise (2x-oversampled grid, so slightly underestimated).
 * `static_export/bands.html` (served at `/static/bands.html`) is a slider demo.
+
+## Large field (15 arcmin) for the hero targets
+
+* `cache_large/<key>/` (same layout as `cache/`, cutouts of 0.25 deg = 15') exists for barnards-star, eps-ind-b and
+  rw-aurigae, made with `SPHEREX_CACHE_DIR=cache_large python scripts/precache.py <targets> --fov 15`. A target found
+  there is used instead of the 6' one (`SPHEREX_USE_LARGE=0` forces the 6' cache; `cache/` is kept as the fallback).
+  `cache_large/` is excluded from the Docker image; the deployed server only serves `static_export/`.
+* The pipeline is unchanged: 15' cutouts are ~146 px wide, the common grid is ~292 px (3.1"/px). Responses report the
+  real `frame_shape` (e.g. `[292, 292]`), `large_shape` (~1024 px) and `image_format`: 6' targets stay PNG at 6x,
+  15' targets are WebP scaled to ~1024 px (the `png_url_*` key names are kept for compatibility).
+* `fov` now defaults to the cached field. Check it with `python scripts/check_large_field.py` (predicted vs measured
+  star position per visit, and 6' vs 15' photometry).
+* The wider field adds context (many more field stars), not resolution: the pixel scale and PSF are the same.

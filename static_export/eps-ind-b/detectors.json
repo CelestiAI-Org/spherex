@@ -85,7 +85,7 @@
   },
   {
    "detector": 4,
-   "n_images": 43,
+   "n_images": 44,
    "channel": "green",
    "wavelength_range_um": [
     2.443,

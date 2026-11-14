@@ -1,0 +1,120 @@
+{
+ "target": "r-draconis",
+ "name": "R Draconis",
+ "ra": 248.16723223984235,
+ "dec": 66.75502440944445,
+ "fov_arcmin": 6.0,
+ "frame_shape": [
+  117,
+  117
+ ],
+ "large_shape": [
+  702,
+  702
+ ],
+ "upscale": 6.0,
+ "image_format": "png",
+ "shared_scale": true,
+ "stretch": "asinh, 1st-99.95th percentile, shared by all detectors",
+ "png_url_color": "/static/r-draconis/detectors_color.png",
+ "color_channels": {
+  "blue": {
+   "detectors": [
+    1,
+    2
+   ],
+   "wavelength_um": [
+    0.73,
+    1.65
+   ]
+  },
+  "green": {
+   "detectors": [
+    3,
+    4
+   ],
+   "wavelength_um": [
+    1.62,
+    3.81
+   ]
+  },
+  "red": {
+   "detectors": [
+    5,
+    6
+   ],
+   "wavelength_um": [
+    3.8,
+    4.99
+   ]
+  }
+ },
+ "detectors": [
+  {
+   "detector": 1,
+   "n_images": 92,
+   "channel": "blue",
+   "wavelength_range_um": [
+    0.734,
+    1.123
+   ],
+   "png_url": "/static/r-draconis/det1.png",
+   "png_url_native": "/static/r-draconis/det1_native.png"
+  },
+  {
+   "detector": 2,
+   "n_images": 89,
+   "channel": "blue",
+   "wavelength_range_um": [
+    1.087,
+    1.651
+   ],
+   "png_url": "/static/r-draconis/det2.png",
+   "png_url_native": "/static/r-draconis/det2_native.png"
+  },
+  {
+   "detector": 3,
+   "n_images": 90,
+   "channel": "green",
+   "wavelength_range_um": [
+    1.617,
+    2.401
+   ],
+   "png_url": "/static/r-draconis/det3.png",
+   "png_url_native": "/static/r-draconis/det3_native.png"
+  },
+  {
+   "detector": 4,
+   "n_images": 85,
+   "channel": "green",
+   "wavelength_range_um": [
+    2.433,
+    3.811
+   ],
+   "png_url": "/static/r-draconis/det4.png",
+   "png_url_native": "/static/r-draconis/det4_native.png"
+  },
+  {
+   "detector": 5,
+   "n_images": 88,
+   "channel": "red",
+   "wavelength_range_um": [
+    3.804,
+    4.423
+   ],
+   "png_url": "/static/r-draconis/det5.png",
+   "png_url_native": "/static/r-draconis/det5_native.png"
+  },
+  {
+   "detector": 6,
+   "n_images": 91,
+   "channel": "red",
+   "wavelength_range_um": [
+    4.406,
+    4.993
+   ],
+   "png_url": "/static/r-draconis/det6.png",
+   "png_url_native": "/static/r-draconis/det6_native.png"
+  }
+ ]
+}

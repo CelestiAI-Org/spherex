@@ -52,7 +52,7 @@
  "detectors": [
   {
    "detector": 1,
-   "n_images": 59,
+   "n_images": 60,
    "channel": "blue",
    "wavelength_range_um": [
     0.738,
@@ -74,7 +74,7 @@
   },
   {
    "detector": 3,
-   "n_images": 57,
+   "n_images": 58,
    "channel": "green",
    "wavelength_range_um": [
     1.627,
