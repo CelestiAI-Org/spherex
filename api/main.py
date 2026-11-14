@@ -6,14 +6,15 @@ Cached data first, always: requests never trigger a live download.
 """
 import json
 import logging
+import os
 import sys
 from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
@@ -22,14 +23,36 @@ sys.path.insert(0, str(ROOT))
 
 from api import fallback  # noqa: E402
 from api.load_cache import CACHE_DIR, load_cutouts, load_index, target_dir  # noqa: E402
-from api.targets import DEFAULT_FOV_ARCMIN, TARGETS, find_by_coords, find_by_name  # noqa: E402
+from api.targets import DEFAULT_FOV_ARCMIN, TARGETS, find_by_name, nearest  # noqa: E402
 from science import pipeline  # noqa: E402
 
 log = logging.getLogger("api")
 RENDER_DIR = CACHE_DIR / "rendered"
 STATIC_EXPORT_DIR = ROOT / "static_export"
+MAX_MATCH_ARCMIN = 10.0  # a request matches the nearest cached target if it is within this distance
+# On the deployed server, answer from the pre-rendered static_export even if raw cutouts are present:
+# stacking hundreds of FITS cutouts per request is far too slow for a small instance.
+PREFER_STATIC = os.environ.get("SPHEREX_PREFER_STATIC") == "1"
 
 app = FastAPI(title="SPHEREx time-lapse API")
+
+
+class ApiError(Exception):
+    def __init__(self, status: int, message: str, **extra):
+        self.status, self.body = status, {"error": message, **extra}
+
+
+@app.exception_handler(ApiError)
+async def api_error_handler(request, exc: ApiError):
+    return JSONResponse(exc.body, status_code=exc.status)
+
+
+@app.exception_handler(Exception)
+async def unexpected_error_handler(request, exc: Exception):
+    log.exception("unhandled error on %s", request.url)
+    return JSONResponse({"error": "internal server error", "detail": str(exc)[:200]}, status_code=500)
+
+
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 RENDER_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/img", StaticFiles(directory=RENDER_DIR), name="img")
@@ -96,14 +119,31 @@ def static_frames(key: str):
     return json.loads(path.read_text()) if path.exists() else None
 
 
-def resolve_target(ra: float, dec: float):
-    hit = find_by_coords(ra, dec)
-    if hit and not load_index(hit[0]) and static_frames(hit[0]):
-        return hit  # no live cache, but the static export can answer /frames
-    if not hit or not load_index(hit[0]):
-        raise HTTPException(404, f"No cached data near ra={ra}, dec={dec}. "
-                                 f"Cached targets: {[k for k in TARGETS if load_index(k)]}")
-    return hit
+def use_static(key: str) -> bool:
+    has_static = (STATIC_EXPORT_DIR / key / "frames.json").exists()
+    return has_static and (PREFER_STATIC or not load_index(key))
+
+
+def available_keys() -> list[str]:
+    return [k for k in TARGETS if load_index(k) or (STATIC_EXPORT_DIR / k / "frames.json").exists()]
+
+
+def pick_target(ra, dec, target):
+    """Return (key, target dict, distance_arcmin) from a target name or the nearest cached target to ra/dec."""
+    keys = available_keys()
+    if target:
+        hit = find_by_name(target)
+        if not hit or hit[0] not in keys:
+            raise ApiError(404, f"Unknown or uncached target '{target}'", available_targets=keys)
+        return hit[0], hit[1], 0.0
+    if ra is None or dec is None:
+        raise ApiError(400, "Give either ?target=<key> or both ?ra= and ?dec=", available_targets=keys)
+    near = nearest(ra, dec, keys)
+    if near is None or near[2] > MAX_MATCH_ARCMIN:
+        raise ApiError(404, f"No cached target within {MAX_MATCH_ARCMIN:g} arcmin of ra={ra}, dec={dec}",
+                       nearest=({"key": near[0], "name": near[1]["name"], "distance_arcmin": round(near[2], 1)} if near else None),
+                       available_targets=keys)
+    return near
 
 
 # ---------- endpoints ----------
@@ -113,7 +153,8 @@ def health():
     return {"status": "ok",
             "pipeline": "science.pipeline" if _pipeline_ready() else "fallback",
             "cached_targets": [k for k in TARGETS if load_index(k)],
-            "static_targets": [k for k in TARGETS if static_frames(k)]}
+            "static_targets": [k for k in TARGETS if (STATIC_EXPORT_DIR / k / "frames.json").exists()],
+            "prefer_static": PREFER_STATIC}
 
 
 def _pipeline_ready() -> bool:
@@ -138,20 +179,37 @@ def resolve(name: str):
         from astropy.coordinates import SkyCoord
         c = SkyCoord.from_name(name)
     except Exception:  # noqa: BLE001
-        raise HTTPException(404, f"Could not resolve '{name}'")
+        raise ApiError(404, f"Could not resolve '{name}'")
     return {"name": name, "key": None, "ra": float(c.ra.deg), "dec": float(c.dec.deg),
             "source": "sesame", "cached": False}
 
 
+@app.get("/targets")
+def targets():
+    """Every cached target with name, coordinates and visit count (use `target=<key>` in /frames)."""
+    out = []
+    for key in available_keys():
+        t = TARGETS[key]
+        if use_static(key):
+            visits, source = len(static_frames(key)["frames"]), "static"
+        else:
+            visits, source = fallback.count_visits([r["mjd"] for r in load_index(key)]), "cache"
+        out.append({"key": key, "name": t["name"], "ra": t["ra"], "dec": t["dec"], "visits": visits,
+                    "source": source, "frames_url": f"/frames?target={key}"})
+    return out
+
+
 @app.get("/frames")
-def frames(ra: float, dec: float, fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, le=60)):
-    key, target = resolve_target(ra, dec)
-    if not load_index(key):
-        return static_frames(key)
+def frames(ra: float | None = None, dec: float | None = None, target: str | None = None,
+           fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, le=60)):
+    """Frames for the cached target nearest to (ra, dec) (within 10 arcmin), or for `target=<key>`."""
+    key, t, dist = pick_target(ra, dec, target)
+    if use_static(key):  # pre-rendered; `fov` is ignored
+        return {**static_frames(key), "matched_distance_arcmin": round(dist, 2)}
     fov = min(fov, cached_fov(key))
-    frs, source = compute_frames(key, round(target["ra"], 5), round(target["dec"], 5), round(fov, 3))
+    frs, source = compute_frames(key, round(t["ra"], 5), round(t["dec"], 5), round(fov, 3))
     if not frs:
-        raise HTTPException(404, f"Cached cutouts for {key} contain no coverage of this field")
+        raise ApiError(404, f"Cached cutouts for {key} contain no coverage of this field")
     out_dir = RENDER_DIR / key / f"fov{fov:g}"
     out_dir.mkdir(parents=True, exist_ok=True)
     items = []
@@ -159,21 +217,25 @@ def frames(ra: float, dec: float, fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, l
         (out_dir / f"{i}.png").write_bytes(to_png_bytes(f.image))
         items.append({"index": i, "url": f"/img/{key}/fov{fov:g}/{i}.png",
                       "mjd_start": f.mjd_start, "mjd_end": f.mjd_end, "n_images": f.n_images})
-    return {"target": key, "name": target["name"], "ra": target["ra"], "dec": target["dec"],
-            "fov_arcmin": fov, "pipeline": source, "frames": items}
+    return {"target": key, "name": t["name"], "ra": t["ra"], "dec": t["dec"], "fov_arcmin": fov,
+            "pipeline": source, "matched_distance_arcmin": round(dist, 2), "frames": items}
 
 
 @app.get("/diff")
-def diff(ra: float, dec: float, a: int, b: int, fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, le=60)):
+def diff(a: int, b: int, ra: float | None = None, dec: float | None = None, target: str | None = None,
+         fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, le=60)):
     """PNG difference of frames a and b (grey = no change, bright/dark = brighter/fainter in b)."""
-    key, target = resolve_target(ra, dec)
-    if not load_index(key):
-        raise HTTPException(503, "/diff needs the cutout cache, which is not available on this server")
+    key, t, _ = pick_target(ra, dec, target)
+    if use_static(key):  # pre-rendered differences between consecutive frames only
+        path = STATIC_EXPORT_DIR / key / f"diff_{a}_{b}.png"
+        if not path.exists():
+            raise ApiError(404, "This server only has pre-rendered differences between consecutive frames (b = a + 1)")
+        return Response(path.read_bytes(), media_type="image/png")
     fov = min(fov, cached_fov(key))
-    frs, _ = compute_frames(key, round(target["ra"], 5), round(target["dec"], 5), round(fov, 3))
+    frs, _ = compute_frames(key, round(t["ra"], 5), round(t["dec"], 5), round(fov, 3))
     for idx in (a, b):
         if not 0 <= idx < len(frs):
-            raise HTTPException(404, f"Frame {idx} does not exist; there are {len(frs)} frames")
+            raise ApiError(404, f"Frame {idx} does not exist; there are {len(frs)} frames")
     d, _ = difference(frs[a], frs[b])
     d = np.asarray(d, dtype=float)
     scale = np.nanpercentile(np.abs(d), 99.5) or 1.0

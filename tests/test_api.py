@@ -74,3 +74,55 @@ def test_pipeline_crash_falls_back(client, monkeypatch):
     body = client.get("/frames", params={**BARNARD, "fov": 4.2}).json()
     assert body["pipeline"] == "fallback" and len(body["frames"]) == 3
     compute_frames.cache_clear()
+
+
+def test_static_fallback_serves_frames_and_diffs(client, tmp_path, monkeypatch):
+    """With no cutout cache, /frames and /diff are served from static_export/."""
+    import json
+    import api.main as m
+    key = "barnards-star"
+    (tmp_path / key).mkdir()
+    (tmp_path / key / "frames.json").write_text(json.dumps({"target": key, "frames": [], "diffs": []}))
+    (tmp_path / key / "diff_0_1.png").write_bytes(b"PNGDATA")
+    monkeypatch.setattr(m, "STATIC_EXPORT_DIR", tmp_path)
+    monkeypatch.setattr(m, "load_index", lambda k: [])
+    assert client.get("/frames", params=BARNARD).json()["target"] == key
+    assert client.get("/diff", params={**BARNARD, "a": 0, "b": 1}).content == b"PNGDATA"
+    assert client.get("/diff", params={**BARNARD, "a": 0, "b": 2}).status_code == 404
+
+
+def test_nearest_match_within_10_arcmin(client):
+    near = client.get("/frames", params={"ra": 269.55, "dec": 4.69, "fov": 5})  # ~6 arcmin from Barnard's J2000 position
+    assert near.status_code == 200 and near.json()["target"] == "barnards-star"
+    assert 5 < near.json()["matched_distance_arcmin"] < 10
+
+
+def test_too_far_gives_json_error(client):
+    r = client.get("/frames", params={"ra": 269.45, "dec": 5.5})  # ~50 arcmin away
+    assert r.status_code == 404 and r.headers["content-type"] == "application/json"
+    body = r.json()
+    assert "error" in body and body["nearest"]["key"] == "barnards-star" and "barnards-star" in body["available_targets"]
+    assert client.get("/frames").status_code == 400 and "error" in client.get("/frames").json()
+
+
+def test_frames_by_target_name(client):
+    assert client.get("/frames", params={"target": "barnards-star", "fov": 5}).json()["target"] == "barnards-star"
+    assert client.get("/frames", params={"target": "nope"}).status_code == 404
+
+
+def test_targets_listing(client):
+    rows = {r["key"]: r for r in client.get("/targets").json()}
+    b = rows["barnards-star"]
+    assert b["name"] == "Barnard's Star" and b["visits"] == 3 and "ra" in b and b["frames_url"] == "/frames?target=barnards-star"
+
+
+def test_prefer_static_skips_cutout_processing(client, tmp_path, monkeypatch):
+    import json
+    import api.main as m
+    (tmp_path / "barnards-star").mkdir()
+    (tmp_path / "barnards-star" / "frames.json").write_text(json.dumps({"target": "barnards-star", "frames": [1, 2, 3, 4], "diffs": []}))
+    monkeypatch.setattr(m, "STATIC_EXPORT_DIR", tmp_path)
+    monkeypatch.setattr(m, "PREFER_STATIC", True)
+    monkeypatch.setattr(m, "compute_frames", lambda *a: (_ for _ in ()).throw(AssertionError("should not stack cutouts")))
+    assert len(client.get("/frames", params={"target": "barnards-star"}).json()["frames"]) == 4
+    assert {r["key"]: r for r in client.get("/targets").json()}["barnards-star"]["visits"] == 4

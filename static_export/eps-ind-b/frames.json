@@ -1,0 +1,55 @@
+{
+ "target": "eps-ind-b",
+ "name": "Epsilon Indi B",
+ "ra": 331.09643662163006,
+ "dec": -56.80115555555555,
+ "fov_arcmin": 6.0,
+ "pipeline": "fallback",
+ "frames": [
+  {
+   "index": 0,
+   "url": "/static/eps-ind-b/0.png",
+   "mjd_start": 60789.85618796,
+   "mjd_end": 60836.190477821,
+   "n_images": 135
+  },
+  {
+   "index": 1,
+   "url": "/static/eps-ind-b/1.png",
+   "mjd_start": 60946.964777416,
+   "mjd_end": 60991.858236571,
+   "n_images": 150
+  },
+  {
+   "index": 2,
+   "url": "/static/eps-ind-b/2.png",
+   "mjd_start": 61148.845456282,
+   "mjd_end": 61164.117615935,
+   "n_images": 79
+  },
+  {
+   "index": 3,
+   "url": "/static/eps-ind-b/3.png",
+   "mjd_start": 61305.227572277,
+   "mjd_end": 61315.478741768,
+   "n_images": 120
+  }
+ ],
+ "diffs": [
+  {
+   "a": 0,
+   "b": 1,
+   "url": "/static/eps-ind-b/diff_0_1.png"
+  },
+  {
+   "a": 1,
+   "b": 2,
+   "url": "/static/eps-ind-b/diff_1_2.png"
+  },
+  {
+   "a": 2,
+   "b": 3,
+   "url": "/static/eps-ind-b/diff_2_3.png"
+  }
+ ]
+}

@@ -3,7 +3,7 @@
     python scripts/export_static.py
 
 Writes static_export/<key>/frames.json (same shape as the /frames response, with
-urls like /static/<key>/0.png) and the PNGs. The API serves these if the cache is missing.
+urls like /static/<key>/0.png, plus a "diffs" list), the frame PNGs and diff_<a>_<b>.png for consecutive visits. The API serves these if the cache is missing.
 """
 import json
 import shutil
@@ -42,6 +42,13 @@ def main():
         for f in body["frames"]:
             (d / f"{f['index']}.png").write_bytes(client.get(f["url"]).content)
             f["url"] = f"/static/{key}/{f['index']}.png"
+        # difference PNGs between consecutive visits, so /diff works from static files alone
+        body["diffs"] = []
+        for i in range(len(body["frames"]) - 1):
+            r = client.get("/diff", params={"ra": t["ra"], "dec": t["dec"], "a": i, "b": i + 1})
+            if r.status_code == 200:
+                (d / f"diff_{i}_{i + 1}.png").write_bytes(r.content)
+                body["diffs"].append({"a": i, "b": i + 1, "url": f"/static/{key}/diff_{i}_{i + 1}.png"})
         (d / "frames.json").write_text(json.dumps(body, indent=1))
         exported[key] = {**t, "frames": len(body["frames"])}
         print(f"[{key}] exported {len(body['frames'])} frames")

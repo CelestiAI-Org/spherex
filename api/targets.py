@@ -78,3 +78,18 @@ def find_by_coords(ra: float, dec: float, tol_deg: float = 0.05):
             if d <= tol_deg and (best is None or d < best[0]):
                 best = (d, key, t)
     return (best[1], best[2]) if best else None
+
+
+def nearest(ra: float, dec: float, keys):
+    """Closest of `keys` to (ra, dec), measured to either its cache centre or its catalogue position.
+
+    Returns (key, target, distance_arcmin) or None if keys is empty.
+    """
+    best = None
+    for key in keys:
+        t = TARGETS[key]
+        for tra, tdec in ((t["ra"], t["dec"]), (t["ra_cat"], t["dec_cat"])):
+            d = math.hypot((ra - tra) * math.cos(math.radians(dec)), dec - tdec) * 60.0
+            if best is None or d < best[2]:
+                best = (key, t, d)
+    return best

@@ -18,6 +18,11 @@ VISIT_GAP_DAYS = 60.0  # real passes are ~20-50 days wide, ~100+ days apart
 GRID_SIZE = 128  # output frame is GRID_SIZE x GRID_SIZE pixels
 
 
+def count_visits(mjds) -> int:
+    mjds = sorted(mjds)
+    return sum(1 for i, m in enumerate(mjds) if i == 0 or m - mjds[i - 1] > VISIT_GAP_DAYS)
+
+
 def group_visits(cutouts: list[Cutout]) -> list[list[Cutout]]:
     cutouts = sorted(cutouts, key=lambda c: c.mjd)
     visits: list[list[Cutout]] = []

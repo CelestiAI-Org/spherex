@@ -17,16 +17,18 @@ pytest                                    # tests use synthetic cutouts, no netw
 ```
 
 Offline backup: `python scripts/export_static.py` writes `static_export/` (JSON + PNGs for every
-cached target). If `cache/` is missing, the API serves `/frames` from that folder instead.
+cached target, plus difference PNGs between consecutive visits). It is committed to git and is what the
+deployed server serves (`SPHEREX_PREFER_STATIC=1` in the Dockerfile, and `cache/` is excluded from the image by `.dockerignore`): `/frames` ignores `fov` there, and `/diff` only works for `b = a + 1`.
 
 ## Endpoints
 
 | Endpoint | Returns |
 |---|---|
 | `GET /health` | `{status, pipeline, cached_targets, static_targets}`; `pipeline` is `science.pipeline` or `fallback` |
+| `GET /targets` | every cached target: `[{key, name, ra, dec, visits, source, frames_url}]` - lets the frontend use names, not coordinates |
 | `GET /resolve?name=Barnard's Star` | `{name, key, ra, dec, source, cached}` - known targets from our table, others via CDS Sesame |
-| `GET /frames?ra=&dec=&fov=` | `{target, ra, dec, fov_arcmin, pipeline, frames:[{index, url, mjd_start, mjd_end, n_images}]}`; each `url` is a PNG (north up, east left) |
-| `GET /diff?ra=&dec=&fov=&a=&b=` | PNG difference of frames `a` and `b` (mid-grey = no change) |
+| `GET /frames?target=barnards-star` or `?ra=&dec=&fov=` | `{target, ra, dec, fov_arcmin, pipeline, matched_distance_arcmin, frames:[{index, url, mjd_start, mjd_end, n_images}]}`; each `url` is a PNG (north up, east left). With `ra`/`dec` it matches the nearest cached target within 10 arcmin (catalogue or 2026 position); otherwise a JSON error `{"error", "nearest", "available_targets"}` (404) |
+| `GET /diff?target=&a=&b=` (or `ra=&dec=`) | PNG difference of frames `a` and `b` (mid-grey = no change) |
 
 `fov` is in arcmin. Responses only use data already in the cache - a request never triggers a download.
 `/frames` uses `science.pipeline.build_frames` as soon as it is implemented (falling back to a simple
