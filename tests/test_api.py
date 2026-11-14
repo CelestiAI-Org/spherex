@@ -24,12 +24,14 @@ def test_frames_and_images(client):
     r = client.get("/frames", params={**BARNARD, "fov": 5})
     assert r.status_code == 200
     body = r.json()
-    assert body["pipeline"] == "fallback"
+    assert body["pipeline"] == "science.pipeline"  # Futa's build_frames is implemented now
+    assert "pipeline_error" not in body
     assert len(body["frames"]) == 3
-    assert body["frames"][0]["n_images"] == 2
+    assert body["frames"][0]["n_images"] >= 1
     img = client.get(body["frames"][0]["url"])
     assert img.status_code == 200
-    assert Image.open(io.BytesIO(img.content)).size == (128, 128)
+    h, w = body["frame_shape"]
+    assert Image.open(io.BytesIO(img.content)).size == (w, h)
 
 
 def test_frames_unknown_location_404(client):
@@ -126,3 +128,30 @@ def test_prefer_static_skips_cutout_processing(client, tmp_path, monkeypatch):
     monkeypatch.setattr(m, "compute_frames", lambda *a: (_ for _ in ()).throw(AssertionError("should not stack cutouts")))
     assert len(client.get("/frames", params={"target": "barnards-star"}).json()["frames"]) == 4
     assert {r["key"]: r for r in client.get("/targets").json()}["barnards-star"]["visits"] == 4
+
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize("failure", [ValueError("x"), RuntimeError("y"), KeyError("z"), ZeroDivisionError(), "empty", "none", NotImplementedError()])
+def test_any_pipeline_failure_falls_back(client, monkeypatch, failure):
+    """Whatever science.pipeline.build_frames does wrong, /frames must still answer from the fallback."""
+    import api.main as m
+    from science import pipeline
+
+    def broken(*a, **k):
+        if failure == "empty":
+            return []
+        raise failure
+
+    if failure == "none":
+        monkeypatch.setattr(m, "pipeline", None)  # module could not even be imported
+    else:
+        monkeypatch.setattr(pipeline, "build_frames", broken)
+    m.compute_frames.cache_clear()
+    r = client.get("/frames", params={**BARNARD, "fov": 3.9})
+    m.compute_frames.cache_clear()
+    body = r.json()
+    assert r.status_code == 200 and body["pipeline"] == "fallback" and len(body["frames"]) == 3
+    if not isinstance(failure, NotImplementedError) and failure != "none":
+        assert "pipeline_error" in body  # says why the real pipeline was not used

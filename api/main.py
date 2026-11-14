@@ -24,7 +24,11 @@ sys.path.insert(0, str(ROOT))
 from api import fallback  # noqa: E402
 from api.load_cache import CACHE_DIR, load_cutouts, load_index, target_dir  # noqa: E402
 from api.targets import DEFAULT_FOV_ARCMIN, TARGETS, find_by_name, nearest  # noqa: E402
-from science import pipeline  # noqa: E402
+try:
+    from science import pipeline  # noqa: E402
+except Exception as _e:  # noqa: BLE001  (e.g. a missing dependency): the API must still start
+    logging.getLogger("api").exception("science.pipeline could not be imported, using fallback only: %s", _e)
+    pipeline = None
 
 log = logging.getLogger("api")
 RENDER_DIR = CACHE_DIR / "rendered"
@@ -63,22 +67,35 @@ if STATIC_EXPORT_DIR.exists():  # offline backup: pre-rendered frames.json + PNG
 # ---------- science plug-in point ----------
 
 def build_frames(cutouts, ra, dec, fov):
-    """Use science.pipeline.build_frames if Futa has implemented it, else the fallback.
+    """-> (frames, source, error). Uses science.pipeline.build_frames, else the fallback.
 
-    Looked up at call time, so the switch happens as soon as the stub is replaced.
-    Any failure in the real pipeline also falls back, so the demo never breaks.
+    Looked up at call time, so the switch happens as soon as the stub is replaced. ANY failure in the
+    real pipeline (not implemented, exception, empty result) falls back, so the demo never breaks;
+    `error` says why.
     """
+    error = None
     try:
-        return pipeline.build_frames(cutouts, ra, dec, fov), "science.pipeline"
+        if pipeline is None:
+            raise NotImplementedError("science.pipeline not importable")
+        frames = pipeline.build_frames(cutouts, ra, dec, fov)
+        if frames:
+            log.info("frames built by science.pipeline: %d frames from %d cutouts", len(frames), len(cutouts))
+            return frames, "science.pipeline", None
+        error = "science.pipeline returned no frames"
     except NotImplementedError:
-        pass
+        error = None  # not written yet - not an error
     except Exception as e:  # noqa: BLE001
         log.exception("science.pipeline.build_frames failed, using fallback: %s", e)
-    return fallback.build_frames(cutouts, ra, dec, fov), "fallback"
+        error = f"{type(e).__name__}: {e}"[:200]
+    frames = fallback.build_frames(cutouts, ra, dec, fov)
+    log.info("frames built by fallback: %d frames from %d cutouts (%s)", len(frames), len(cutouts), error or "pipeline not implemented")
+    return frames, "fallback", error
 
 
 def difference(a, b):
     try:
+        if pipeline is None:
+            raise NotImplementedError
         return pipeline.difference(a, b), "science.pipeline"
     except NotImplementedError:
         pass
@@ -106,10 +123,10 @@ def cached_fov(key: str) -> float:
 
 @lru_cache(maxsize=32)
 def compute_frames(key: str, ra: float, dec: float, fov: float):
-    """-> (frames, source). Cached in memory because cutout loading is the slow part."""
+    """-> (frames, source, error). Cached in memory because cutout loading is the slow part."""
     cutouts = load_cutouts(key)
     if not cutouts:
-        return [], "none"
+        return [], "none", None
     return build_frames(cutouts, ra, dec, fov)
 
 
@@ -158,6 +175,8 @@ def health():
 
 
 def _pipeline_ready() -> bool:
+    if pipeline is None:
+        return False
     try:
         pipeline.build_frames([], 0.0, 0.0, 1.0)
     except NotImplementedError:
@@ -207,7 +226,7 @@ def frames(ra: float | None = None, dec: float | None = None, target: str | None
     if use_static(key):  # pre-rendered; `fov` is ignored
         return {**static_frames(key), "matched_distance_arcmin": round(dist, 2)}
     fov = min(fov, cached_fov(key))
-    frs, source = compute_frames(key, round(t["ra"], 5), round(t["dec"], 5), round(fov, 3))
+    frs, source, error = compute_frames(key, round(t["ra"], 5), round(t["dec"], 5), round(fov, 3))
     if not frs:
         raise ApiError(404, f"Cached cutouts for {key} contain no coverage of this field")
     out_dir = RENDER_DIR / key / f"fov{fov:g}"
@@ -217,8 +236,12 @@ def frames(ra: float | None = None, dec: float | None = None, target: str | None
         (out_dir / f"{i}.png").write_bytes(to_png_bytes(f.image))
         items.append({"index": i, "url": f"/img/{key}/fov{fov:g}/{i}.png",
                       "mjd_start": f.mjd_start, "mjd_end": f.mjd_end, "n_images": f.n_images})
-    return {"target": key, "name": t["name"], "ra": t["ra"], "dec": t["dec"], "fov_arcmin": fov,
-            "pipeline": source, "matched_distance_arcmin": round(dist, 2), "frames": items}
+    out = {"target": key, "name": t["name"], "ra": t["ra"], "dec": t["dec"], "fov_arcmin": fov,
+           "pipeline": source, "matched_distance_arcmin": round(dist, 2),
+           "frame_shape": list(frs[0].image.shape), "frames": items}
+    if error:
+        out["pipeline_error"] = error  # why science.pipeline was not used
+    return out
 
 
 @app.get("/diff")
@@ -232,7 +255,7 @@ def diff(a: int, b: int, ra: float | None = None, dec: float | None = None, targ
             raise ApiError(404, "This server only has pre-rendered differences between consecutive frames (b = a + 1)")
         return Response(path.read_bytes(), media_type="image/png")
     fov = min(fov, cached_fov(key))
-    frs, _ = compute_frames(key, round(t["ra"], 5), round(t["dec"], 5), round(fov, 3))
+    frs, *_ = compute_frames(key, round(t["ra"], 5), round(t["dec"], 5), round(fov, 3))
     for idx in (a, b):
         if not 0 <= idx < len(frs):
             raise ApiError(404, f"Frame {idx} does not exist; there are {len(frs)} frames")

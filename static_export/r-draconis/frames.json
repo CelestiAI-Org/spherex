@@ -1,31 +1,36 @@
 {
  "target": "r-draconis",
  "name": "R Draconis",
- "ra": 248.16761,
- "dec": 66.75498,
+ "ra": 248.16723223984235,
+ "dec": 66.75502440944445,
  "fov_arcmin": 6.0,
- "pipeline": "fallback",
+ "pipeline": "science.pipeline",
+ "matched_distance_arcmin": 0.0,
+ "frame_shape": [
+  117,
+  117
+ ],
  "frames": [
   {
    "index": 0,
    "url": "/static/r-draconis/0.png",
    "mjd_start": 60811.956495321,
    "mjd_end": 60878.608885645,
-   "n_images": 185
+   "n_images": 153
   },
   {
    "index": 1,
    "url": "/static/r-draconis/1.png",
    "mjd_start": 60965.615173886,
    "mjd_end": 61053.415291837,
-   "n_images": 217
+   "n_images": 210
   },
   {
    "index": 2,
    "url": "/static/r-draconis/2.png",
    "mjd_start": 61152.331717948,
    "mjd_end": 61237.873900124,
-   "n_images": 175
+   "n_images": 172
   }
  ],
  "diffs": [

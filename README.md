@@ -27,12 +27,11 @@ deployed server serves (`SPHEREX_PREFER_STATIC=1` in the Dockerfile, and `cache/
 | `GET /health` | `{status, pipeline, cached_targets, static_targets}`; `pipeline` is `science.pipeline` or `fallback` |
 | `GET /targets` | every cached target: `[{key, name, ra, dec, visits, source, frames_url}]` - lets the frontend use names, not coordinates |
 | `GET /resolve?name=Barnard's Star` | `{name, key, ra, dec, source, cached}` - known targets from our table, others via CDS Sesame |
-| `GET /frames?target=barnards-star` or `?ra=&dec=&fov=` | `{target, ra, dec, fov_arcmin, pipeline, matched_distance_arcmin, frames:[{index, url, mjd_start, mjd_end, n_images}]}`; each `url` is a PNG (north up, east left). With `ra`/`dec` it matches the nearest cached target within 10 arcmin (catalogue or 2026 position); otherwise a JSON error `{"error", "nearest", "available_targets"}` (404) |
+| `GET /frames?target=barnards-star` or `?ra=&dec=&fov=` | `{target, ra, dec, fov_arcmin, pipeline, frame_shape, matched_distance_arcmin, frames:[{index, url, mjd_start, mjd_end, n_images}]}`; each `url` is a PNG (north up, east left). With `ra`/`dec` it matches the nearest cached target within 10 arcmin (catalogue or 2026 position); otherwise a JSON error `{"error", "nearest", "available_targets"}` (404) |
 | `GET /diff?target=&a=&b=` (or `ra=&dec=`) | PNG difference of frames `a` and `b` (mid-grey = no change) |
 
 `fov` is in arcmin. Responses only use data already in the cache - a request never triggers a download.
-`/frames` uses `science.pipeline.build_frames` as soon as it is implemented (falling back to a simple
-built-in stacker if it is missing or raises); `/diff` likewise uses `science.pipeline.difference`.
+`/frames` uses `science.pipeline.build_frames` (falling back to `api/fallback.py` if it raises any exception or returns no frames; `pipeline` says which one made the result and `pipeline_error` says why the fallback was used); `/diff` likewise uses `science.pipeline.difference`.
 Sample responses for frontend work: `api/sample_frames.json` and `api/sample_frames/`.
 
 ## Data credits

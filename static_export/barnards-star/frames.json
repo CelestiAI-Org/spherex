@@ -1,31 +1,36 @@
 {
  "target": "barnards-star",
  "name": "Barnard's Star",
- "ra": 269.4462624931781,
- "dec": 4.768199555555555,
+ "ra": 269.44627154408244,
+ "dec": 4.768199512222222,
  "fov_arcmin": 6.0,
- "pipeline": "fallback",
+ "pipeline": "science.pipeline",
+ "matched_distance_arcmin": 0.0,
+ "frame_shape": [
+  117,
+  117
+ ],
  "frames": [
   {
    "index": 0,
    "url": "/static/barnards-star/0.png",
    "mjd_start": 60902.865380738,
    "mjd_end": 60949.266580483,
-   "n_images": 130
+   "n_images": 117
   },
   {
    "index": 1,
    "url": "/static/barnards-star/1.png",
    "mjd_start": 61110.092069106,
    "mjd_end": 61165.083637763,
-   "n_images": 124
+   "n_images": 120
   },
   {
    "index": 2,
    "url": "/static/barnards-star/2.png",
-   "mjd_start": 61268.629985541,
+   "mjd_start": 61268.631477786,
    "mjd_end": 61305.628686814,
-   "n_images": 129
+   "n_images": 118
   }
  ],
  "diffs": [
