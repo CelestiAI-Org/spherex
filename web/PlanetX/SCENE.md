@@ -44,7 +44,31 @@ the real integration is in place.
 | `?fps` or **Shift+F** | Overlay: fps, tier, render resolution, the black hole's buffer size and resolution scale, steps, octaves, and the governor's last step down. |
 | `?debug` | Exposes tuning handles on `spherexScene.debug`. |
 | `?wiring=off` | Turns off the demo wiring. |
-| `?asteroid=off` | Turns off the looping asteroid that falls into the black hole. |
+| `?intro=off` | Skips the supernova intro (it otherwise plays on every page load). |
+| `?gate=1` | Shows a "Click to begin" screen first, so the presenter starts picture and sound together. |
+| `?sound=off` | Disables sound and hides the sound button. |
+| `?asteroid=on` | Turns on the looping asteroid that falls into the black hole (off by default). |
+
+## Supernova intro and sound
+
+`scene/intro.js` plays a 25-second opening on every page load, then hands over to the idle black
+hole shot: a massive star (0-5 s), instability (5-10 s), core collapse (10-12 s), the supernova
+with its expanding shell and a shockwave ripple that pushes the rocks and dust (12-18 s), and the
+black hole's lensing and disk fading in while the camera glides out (18-25 s).
+
+- **Skipping:** the Skip button, Esc or Space; any menu action, search, target pick, or a call to
+  `scene.flyTo()` / `scene.reset()` skips it at once, so it never delays the warm zoom.
+  "Replay intro" in the menu (or `scene.replayIntro()`) plays it again.
+- **Sound** (`scene/audio.js`) is synthesised with the Web Audio API: no samples or music files.
+  Browsers block audio until the user interacts, so it starts on the first click, key press or
+  touch and fades in. The sound button (bottom right) turns it on or off and the choice is
+  remembered. After the intro a quiet ambient pad keeps playing. The master level is about -12 dB
+  behind a limiter, and audio is suspended while the tab is hidden.
+- **Comfort:** one flash that ramps over 300 ms, pulses below 2 per second, no strobing. With
+  `prefers-reduced-motion` the camera stays still, there is no flash wash, ripple, heartbeat or
+  whoosh, and sound plays at about a third of the level.
+- **Tiers:** low gets a simpler shell, fewer ejecta, no ripple refraction, and fewer voices in
+  the drone, shimmer and pad.
 
 ## Automatic quality fallback
 
@@ -69,6 +93,7 @@ tier; then, already on low, lower the overall render resolution (to 0.7). It nev
 | `scene/blackhole.js` | Lensing black hole: Schwarzschild ray integration, accretion disk, photon ring. |
 | `scene/asteroids.js` | Debris belt and drifting dust. |
 | `scene/warp.js`, `scene/flight.js` | Warp streaks, beacons, and the flight state machine. |
+| `scene/intro.js`, `scene/audio.js` | Supernova intro timeline and visuals; synthesised sound. |
 | `scene/targets.js` | Cached target beacons, labels and picking. |
 | `scene/post.js` | Bloom, flare, streak, chromatic aberration, tone mapping, grade, vignette, grain. |
 | `scene/camera.js` | Drag with inertia, idle drift, parallax, zoom. |

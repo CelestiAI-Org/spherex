@@ -29,6 +29,7 @@ import { createTargetLayer } from "./scene/targets.js";
 import { Flight } from "./scene/flight.js";
 import { wireDemo } from "./scene/wiring.js";
 import { createIntro } from "./scene/intro.js";
+import { createSound } from "./scene/audio.js";
 import { createNoiseTexture } from "./scene/noise.js";
 import { Post } from "./scene/post.js";
 import { CameraRig } from "./scene/camera.js";
@@ -97,6 +98,7 @@ function createSpaceScene(renderer) {
     let scale = 1;              // overall render resolution (last resort of the governor)
     let bhScale = tier.bhScale; // black hole buffer resolution
     let dataMode = false;
+    let intro = null, sound = null;
     let lost = false;
 
     const world = new THREE.Scene();
@@ -139,6 +141,7 @@ function createSpaceScene(renderer) {
         debris.setTier(tier);
         post.setTier(tier);
         intro?.setTier(tier);
+        sound?.setTier(tier.name === "low");
         resize();
     }
     function resize() {
@@ -204,7 +207,9 @@ function createSpaceScene(renderer) {
     };
     const flight = new Flight({ rig, state, post, streaks, targets, home: HOME });
     flight.reducedMotion = params.reducedMotion;
-    const intro = createIntro({ world, rig, state, post, blackHole, debris, flight, shared, noise, home: HOME, params });
+    sound = createSound({ reduced: params.reducedMotion, debug: params.debug });
+    sound.setTier(tier.name === "low");
+    intro = createIntro({ world, rig, state, post, blackHole, debris, flight, shared, noise, home: HOME, params, sound });
     intro.setTier(tier);
     if (params.reducedMotion) rig.swayAmplitude *= 0.4;
 
@@ -299,7 +304,7 @@ function createSpaceScene(renderer) {
     });
 
     // Tuning handle for development only: window.spherexScene.debug with ?debug in the URL.
-    const debug = params.debug ? { post, blackHole, rig, state, world, flight, governor, hud, intro, debris } : undefined;
+    const debug = params.debug ? { post, blackHole, rig, state, world, flight, governor, hud, intro, debris, sound } : undefined;
 
     return {
         ready,
