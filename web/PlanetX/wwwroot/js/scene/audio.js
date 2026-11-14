@@ -6,6 +6,7 @@
 //          with a noise burst and falling low-pass plus a shimmer for the shell, and a whoosh
 //          that pans across the stereo field with the shockwave.
 //   idle   a dark, spacious pad with a faint shimmer, quiet enough to talk over.
+//   voice  optional recorded lines; the synth layers dip by about 9 dB while one plays.
 //
 // Browsers only allow audio after a user gesture, so the AudioContext is created on the first
 // click / key press / touch and everything fades in from silence. The intro drives the timeline
@@ -33,6 +34,9 @@ export function createSound({ reduced = false, debug = false } = {}) {
     const fired = {};
     let nextBeat = 5.2, lastSync = -1, muteTimer = 0;
     let unlockedAt = -1e9;              // when a gesture last started the audio
+    let duck = null, voiceBus = null;
+    // Optional recorded voice lines (see LINES and VOICE in intro.js).
+    const voice = { lines: [], raw: [], buffers: [], current: null, queue: [], level: 1, duckTo: 0.35, gap: 0.3, total: 0, decoded: false };
 
     function readPref() { try { return localStorage.getItem(PREF_KEY) !== "off"; } catch { return true; } }
     function writePref() { try { localStorage.setItem(PREF_KEY, wanted ? "on" : "off"); } catch { /* private mode */ } }
@@ -139,7 +143,12 @@ export function createSound({ reduced = false, debug = false } = {}) {
         limiter.release.value = 0.3;
         master = gain(0, ctx.destination);
         limiter.connect(master);
-        bus = gain(0.5, limiter);
+        // Synth layers go through "duck", which dips while a voice line plays; the voice joins
+        // after it, so both still pass through the same limiter and master volume.
+        duck = gain(1, limiter);
+        bus = gain(0.5, duck);
+        voiceBus = gain(voice.level, limiter);
+        decodeVoice();
         if (debug) {
             analyser = ctx.createAnalyser();
             analyser.fftSize = 2048;
@@ -396,6 +405,81 @@ export function createSound({ reduced = false, debug = false } = {}) {
         });
     }
 
+    // ---- Voice lines ----
+    // Files are fetched up front (a missing file is simply skipped) and decoded once audio starts.
+    function loadVoice(lines, options, total) {
+        Object.assign(voice, options, { lines, total });
+        voice.raw = lines.map(() => null);
+        if (disabled) return;
+        Promise.all(lines.map((line, i) => fetch(options.folder + line.file)
+            .then(r => (r.ok ? r.arrayBuffer() : null))
+            .then(data => { voice.raw[i] = data; })
+            .catch(() => {})))
+            .then(() => { voice.fetched = true; decodeVoice(); });
+    }
+    function decodeVoice() {
+        if (!ctx || !voice.fetched || voice.decoded) return;
+        voice.decoded = true;
+        Promise.all(voice.raw.map((data, i) => (data
+            ? ctx.decodeAudioData(data.slice(0)).then(buffer => { voice.buffers[i] = buffer; }).catch(() => {})
+            : null))).then(() => {
+            const notes = voiceReport();
+            if (notes.length) console.info("[intro voice] " + notes.join(" "));
+        });
+    }
+    // Which recorded lines are longer than the gap before the next line (they get queued).
+    function voiceReport() {
+        const notes = [];
+        voice.lines.forEach((line, i) => {
+            const buffer = voice.buffers[i];
+            if (!buffer) return;
+            const slot = (voice.lines[i + 1]?.at ?? voice.total) - line.at - voice.gap;
+            if (buffer.duration > slot) {
+                notes.push(`${line.file} is ${buffer.duration.toFixed(1)} s but its slot is ${slot.toFixed(1)} s: the next line will wait for it. Shorten it or move the cue times.`);
+            }
+        });
+        return notes;
+    }
+    function startLine(i) {
+        const source = ctx.createBufferSource();
+        source.buffer = voice.buffers[i];
+        source.connect(voiceBus);
+        source.start();
+        voice.current = { i, source };
+        glide(duck.gain, voice.duckTo, 0.4);                   // music and effects dip under the voice
+        source.onended = () => {
+            if (voice.current?.source !== source) return;
+            source.disconnect();
+            voice.current = null;
+            const next = voice.queue.shift();
+            if (next !== undefined) voice.timer = setTimeout(() => { if (!voice.current) startLine(next); }, voice.gap * 1000);
+            else glide(duck.gain, 1, 1.0);
+        };
+    }
+    // Lines never overlap: if one is still playing, the next waits its turn.
+    function playVoice(i) {
+        if (!voice.buffers[i]) return;
+        if (voice.current || voice.queue.length) voice.queue.push(i);
+        else startLine(i);
+    }
+    function stopVoice() {
+        voice.queue.length = 0;
+        clearTimeout(voice.timer);
+        if (!ctx) return;
+        const playing = voice.current;
+        voice.current = null;
+        if (playing) {
+            playing.source.onended = null;
+            glide(voiceBus.gain, 0, 0.15);
+            setTimeout(() => {
+                try { playing.source.stop(); } catch { /* already ended */ }
+                playing.source.disconnect();
+                if (!voice.current) glide(voiceBus.gain, voice.level, 0.05);
+            }, 250);
+        }
+        glide(duck.gain, 1, 0.6);
+    }
+
     // Fire a one-shot when the timeline crosses its time (not when joining late).
     function cue(name, t, at, fn) {
         if (fired[name] || t < at) return;
@@ -413,12 +497,14 @@ export function createSound({ reduced = false, debug = false } = {}) {
             for (const key of Object.keys(fired)) delete fired[key];
             if (!ctx) return;
             cutOneShots();
+            stopVoice();
             if (pad) glide(pad.out.gain, 0, 2);
             buildIntro();
         },
         // Called every frame by the intro with its time in seconds.
         sync(t) {
             if (!ctx || mode !== "intro" || ctx.state !== "running") return;
+            voice.lines.forEach((line, i) => cue("voice" + i, t, line.at, () => playVoice(i)));
             if (!reduced) {
                 if (t >= nextBeat && t < 10.1) {
                     const tension = smooth(5, 10, t);
@@ -445,9 +531,11 @@ export function createSound({ reduced = false, debug = false } = {}) {
             glide(intro.tensionB.frequency, 155.6 * (1 + 0.5 * rise), 0.3);
         },
         // Intro finished or skipped: fade its sound out and settle into the pad.
-        endIntro() {
+        // cut = true (skip) also stops the voice; a natural end lets the last line finish.
+        endIntro(cut = true) {
             if (mode !== "intro") return;
             mode = "idle";
+            if (cut) stopVoice();
             if (!ctx) return;
             endIntroLayer(0.5);
             cutOneShots();
@@ -462,6 +550,11 @@ export function createSound({ reduced = false, debug = false } = {}) {
             for (const v of data) peak = Math.max(peak, Math.abs(v));
             return peak;
         },
+        setVoice: loadVoice,
+        // Index of the voice line playing now, or -1 (captions follow it).
+        get voiceLine() { return voice.current ? voice.current.i : -1; },
+        voiceReport,
+        get ducking() { return duck ? duck.gain.value : 1; },
         get state() { return ctx ? ctx.state : "none"; },
         get nodeCount() { return oneShots.size; },
     };

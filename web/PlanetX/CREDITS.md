@@ -10,6 +10,9 @@ All sound is synthesised live in `scene/audio.js` with the browser's Web Audio A
 filtered noise, delays). There are no audio samples, recordings or music, and nothing is borrowed
 from any film or game.
 
+Voice lines, if added to `wwwroot/audio/voice/`, are the team's own recordings. None are
+included in the repository.
+
 ## Library
 
 | What | Licence | Used for |

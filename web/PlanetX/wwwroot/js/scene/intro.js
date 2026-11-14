@@ -31,6 +31,10 @@ export const LINES = [
     { at: 19, file: "line4.mp3", text: "Gravity crushes what is left of the core." },
     { at: 23, file: "line5.mp3", text: "What remains can be a black hole." },
 ];
+// Voice files are optional: wwwroot/audio/voice/line1.mp3 ... A missing file is skipped and its
+// caption still shows. level is the voice volume, duckTo how far the music and effects dip under
+// it (0.35 is about -9 dB), gap the pause between lines if one runs into the next.
+export const VOICE = { folder: "audio/voice/", level: 1.0, duckTo: 0.35, gap: 0.3 };
 const CAPTION_HOLD = 4.4;       // seconds a caption stays up (shorter if the next line is due)
 
 const smooth = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -268,6 +272,7 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
     const dustShock = new THREE.Vector3();
     let dustPassed = -1;
 
+    sound?.setVoice(LINES, VOICE, DURATION);
     const shouldPlay = flag !== "off";                  // plays on every load unless ?intro=off
     // A "Click to begin" screen holds the first frame, so one click starts picture and sound
     // together (browsers only allow audio after a gesture). ?gate=0 skips it.
@@ -350,7 +355,7 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
         held = false;
         gate.hidden = true;
         document.body.classList.remove("is-gated");
-        sound?.endIntro();
+        sound?.endIntro(cut);
         if (cut) {
             if (rig.anim) { rig.anim.resolve(false); rig.anim = null; }
             rig.yaw = home.ra * DEG;
@@ -503,6 +508,8 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
             const until = Math.min(line.at + CAPTION_HOLD, (LINES[i + 1]?.at ?? Infinity) - 0.5);
             if (t >= line.at + 0.3 && t < until) current = i;
         });
+        const speaking = sound?.voiceLine ?? -1;          // a caption stays up while its line is spoken
+        if (speaking >= 0) current = speaking;
         if (current !== captionIndex) {
             captionIndex = current;
             setCaption(current >= 0 ? LINES[current].text : "");
