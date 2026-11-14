@@ -1,4 +1,4 @@
-"""Wavelength, /spectrum and /frames_by_detector (synthetic cutouts: detector 1 ~1 um, detector 2 ~3 um)."""
+"""Wavelength, /spectrum and /frames_by_detector (synthetic cutouts: detector 1 ~1.0 um, detector 2 ~1.4 um)."""
 import io
 import json
 import shutil
@@ -18,7 +18,7 @@ def test_wavelength_loaded_from_wcs_wave():
     cutouts = load_cutouts("barnards-star")
     assert len(cutouts) == 6 and all(c.wavelength_um is not None for c in cutouts)
     for c in cutouts:
-        expected = 1.0 if c.detector == 1 else 3.0
+        expected = 1.0 if c.detector == 1 else 1.4
         assert abs(c.wavelength_um - expected) < 0.05
 
 
@@ -77,7 +77,7 @@ def test_frames_by_detector(client):
     for d in (1, 2):
         assert dets[d]["n_images"] == 3
         lo, hi = dets[d]["wavelength_range_um"]
-        assert lo <= hi and abs((lo + hi) / 2 - (1.0 if d == 1 else 3.0)) < 0.05
+        assert lo <= hi and abs((lo + hi) / 2 - (1.0 if d == 1 else 1.4)) < 0.05
         img = Image.open(io.BytesIO(client.get(dets[d]["png_url"]).content))
         assert list(img.size[::-1]) == body["large_shape"] == [x * 6 for x in frames_shape]
         assert Image.open(io.BytesIO(client.get(dets[d]["png_url_native"]).content)).size == tuple(frames_shape[::-1])

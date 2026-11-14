@@ -9,6 +9,7 @@ Per target, static_export/<key>/ gets: frames.json (same shape as the /frames re
     det<d>.png det<d>_native.png detectors_color.png  one frame per detector + false-colour composite
     before/<i>.png                                    the OLD rendering (linear stretch, nearest-neighbour), for comparison
 and static_export/compare.html shows before/after for every target.
+For BAND_TARGETS also bands.json + bands/b<0..101>.webp (one image per spectral band); bands.html is a slider demo.
 """
 import html
 import json
@@ -30,6 +31,7 @@ from api.main import app, cached_fov, compute_frames  # noqa: E402
 from api.targets import REAL_TARGETS, TARGETS  # noqa: E402
 
 OUT = ROOT / "static_export"
+BAND_TARGETS = ("barnards-star", "eps-ind-b", "rw-aurigae")   # 102 band images each (~1 MB as WebP); not all targets
 
 
 def save_png(client, url, dest):
@@ -79,6 +81,16 @@ def export_target(client, key):
         save_png(client, det["png_url_color"], d / "detectors_color.png")
         det["png_url_color"] = f"/static/{key}/detectors_color.png"
     (d / "detectors.json").write_text(json.dumps(det, indent=1))
+    if key in BAND_TARGETS:
+        bands = client.get("/frames_by_band", params={"target": key}).json()
+        (d / "bands").mkdir()
+        for b in bands["bands"]:
+            if b["webp_url"]:
+                name = f"b{b['band_index']}.webp"
+                save_png(client, b["webp_url"], d / "bands" / name)
+                b["webp_url"] = f"/static/{key}/bands/{name}"
+        (d / "bands.json").write_text(json.dumps(bands, separators=(",", ":")))
+        print(f"[{key}] exported {bands['n_bands_with_data']}/{bands['n_bands']} band images")
     print(f"[{key}] exported {len(body['frames'])} frames, {len(body['diffs'])} diffs, spectrum {spec['n_points']} pts")
     return {**t, "frames": len(body["frames"]), "spectrum_points": spec["n_points"], "channels": body["color_channels"]}
 
@@ -106,6 +118,35 @@ def write_compare_page(exported):
     (OUT / "compare.html").write_text(page)
 
 
+BANDS_PAGE = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPHEREx wavelength slider</title>
+<style>body{background:#111;color:#ddd;font:15px sans-serif;margin:16px;max-width:760px}img{width:100%;max-width:702px;display:block;background:#000}
+input[type=range]{width:100%;max-width:702px}#info{margin:8px 0;font-variant-numeric:tabular-nums}</style>
+<h1>Wavelength slider</h1>
+<p>One image per SPHEREx band (102 = 6 detectors x 17 channels), all visits stacked, one brightness scale for every band.</p>
+<select id="t"></select>
+<div id="info">loading...</div>
+<input id="s" type="range" min="0" max="101" value="0">
+<img id="im" alt="band image">
+<script>
+const targets = %TARGETS%;
+const sel = document.getElementById('t'), s = document.getElementById('s'), im = document.getElementById('im'), info = document.getElementById('info');
+let bands = [];
+targets.forEach(k => { const o = document.createElement('option'); o.value = k; o.textContent = k; sel.appendChild(o); });
+async function load() {
+  bands = (await (await fetch('/static/' + sel.value + '/bands.json')).json()).bands;
+  s.max = bands.length - 1; show();
+}
+function show() {
+  const b = bands[+s.value];
+  info.textContent = 'band ' + b.band_index + ' | detector ' + b.detector + ' | ' + b.wavelength_um_min.toFixed(3) + '-' + b.wavelength_um_max.toFixed(3) + ' um | ' + b.n_images + ' images';
+  if (b.webp_url) im.src = b.webp_url; else im.removeAttribute('src');
+}
+s.oninput = show; sel.onchange = load; load();
+</script>"""
+
+
+
 def main():
     client = TestClient(app)
     if OUT.exists():
@@ -121,6 +162,7 @@ def main():
             exported[key] = info
     (OUT / "targets.json").write_text(json.dumps(exported, indent=1))
     write_compare_page(exported)
+    (OUT / "bands.html").write_text(BANDS_PAGE.replace("%TARGETS%", json.dumps([k for k in exported if k in BAND_TARGETS])))
     print(f"Done: {len(exported)} targets -> {OUT}")
 
 

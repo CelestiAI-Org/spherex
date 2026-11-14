@@ -207,18 +207,30 @@ def targets():
         else:
             visits, source = fallback.count_visits([r["mjd"] for r in load_index(key)]), "cache"
         out.append({"key": key, "name": t["name"], "ra": t["ra"], "dec": t["dec"], "visits": visits,
-                    "source": source, "frames_url": f"/frames?target={key}"})
+                    "source": source, "frames_url": f"/frames?target={key}",
+                    "has_bands": key in targets_with_bands()})
     return out
+
+
+@lru_cache(maxsize=2)
+def layerset_for(key: str, ra: float, dec: float, fov: float):
+    """All usable cutouts of a target on the common grid (slow: reprojects every cutout; ~40 MB), cached."""
+    return display.LayerSet(load_cutouts(key), ra, dec, fov)
 
 
 @lru_cache(maxsize=8)
 def display_for(key: str, ra: float, dec: float, fov: float):
     """Display-quality rendering (asinh stretch, Lanczos upscale, colour) of a target, or None if it fails."""
     try:
-        return display.render_target(load_cutouts(key), ra, dec, fov)
+        return display.Rendered(layerset_for(key, ra, dec, fov))
     except Exception as e:  # noqa: BLE001  (the plain frames still work without it)
         log.exception("display rendering failed for %s: %s", key, e)
         return None
+
+
+@lru_cache(maxsize=2)
+def bands_for(key: str, ra: float, dec: float, fov: float):
+    return display.render_bands(layerset_for(key, ra, dec, fov))
 
 
 @app.get("/frames")
@@ -361,3 +373,61 @@ def frames_by_detector(ra: float | None = None, dec: float | None = None, target
             "frame_shape": list(rend.shape), "large_shape": [rend.shape[0] * display.UPSCALE, rend.shape[1] * display.UPSCALE],
             "upscale": display.UPSCALE, "shared_scale": True, "stretch": "asinh, 1st-99.95th percentile, shared by all detectors",
             "png_url_color": color_url, "color_channels": rend.channels, "detectors": items}
+
+
+BAND_WEBP_QUALITY = 85
+
+
+def targets_with_bands() -> list[str]:
+    return [k for k in available_keys() if (STATIC_EXPORT_DIR / k / "bands.json").exists()
+            or (not use_static(k) and load_index(k))]
+
+
+@app.get("/frames_by_band")
+def frames_by_band(ra: float | None = None, dec: float | None = None, target: str | None = None,
+                   fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, le=60)):
+    """One image per SPHEREx spectral band (102 = 6 detectors x 17 channels), ordered by wavelength, for a
+    wavelength slider. Each band stacks that band's cutouts across ALL visits with the same grid, hole filling,
+    asinh stretch (ONE scale shared by all bands) and Lanczos upscale as /frames; images are lossy WebP.
+    A band with no data has `webp_url: null`. Band edges are the official SPHEREx channel table."""
+    key, t, _ = pick_target(ra, dec, target)
+    if use_static(key):
+        path = STATIC_EXPORT_DIR / key / "bands.json"
+        if not path.exists():
+            raise ApiError(404, f"Band images were only pre-computed for some targets, not {key}",
+                           targets_with_bands=targets_with_bands())
+        return json.loads(path.read_text())
+    fov = min(fov, cached_fov(key))
+    try:
+        r = bands_for(key, round(t["ra"], 5), round(t["dec"], 5), round(fov, 3))
+    except Exception as e:  # noqa: BLE001
+        log.exception("band rendering failed for %s", key)
+        raise ApiError(503, f"Could not build the band images for {key}: {type(e).__name__}: {e}"[:300])
+    base = f"/img/{key}/bands"
+    out_dir = RENDER_DIR / key / "bands"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    items = []
+    for b in r["bands"]:
+        i = b["band_index"]
+        item = {"band_index": i, "detector": b["detector"], "subchannel": b["subchannel"],
+                "wavelength_um": b["wavelength_um"], "wavelength_um_min": b["wavelength_um_min"],
+                "wavelength_um_max": b["wavelength_um_max"], "measured_wavelength_um": b["measured_wavelength_um"],
+                "n_images": b["n_images"], "webp_url": None,
+                "noise_mjy_sr": None if b["noise"] is None else round(b["noise"], 4),
+                "nodata_fraction": None if b["nodata_fraction"] is None else round(b["nodata_fraction"], 3),
+                "quality": b["quality"], "quality_notes": b["quality_notes"]}
+        if b["image"] is not None:
+            (out_dir / f"b{i}.webp").write_bytes(display.webp_bytes(b["image"], BAND_WEBP_QUALITY))
+            item["webp_url"] = f"{base}/b{i}.webp"
+        else:
+            item["note"] = "no usable cutout in this band"
+        items.append(item)
+    h, w = r["shape"]
+    return {"target": key, "name": t["name"], "ra": t["ra"], "dec": t["dec"], "fov_arcmin": fov,
+            "format": "webp", "webp_quality": BAND_WEBP_QUALITY, "frame_shape": [h, w],
+            "large_shape": [h * display.UPSCALE, w * display.UPSCALE], "upscale": display.UPSCALE,
+            "stretch": "asinh, 1st-99.95th percentile of all bands pooled (one scale for every band)",
+            "n_bands": len(items), "n_bands_with_data": sum(1 for i in items if i["webp_url"]),
+            "n_cutouts_outside_all_channels": r["n_unassigned"],
+            "n_bands_low_quality": sum(1 for i in items if i["quality"] == "low"),
+            "median_band_noise_mjy_sr": None if r["median_noise"] is None else round(r["median_noise"], 4), "bands": items}

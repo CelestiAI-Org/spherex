@@ -29,6 +29,7 @@ deployed server serves (`SPHEREX_PREFER_STATIC=1` in the Dockerfile, and `cache/
 | `GET /resolve?name=Barnard's Star` | `{name, key, ra, dec, source, cached}` - known targets from our table, others via CDS Sesame |
 | `GET /frames?target=barnards-star` or `?ra=&dec=&fov=` | `{target, ra, dec, fov_arcmin, pipeline, frame_shape, large_shape, upscale, stretch, color_channels, matched_distance_arcmin, frames:[{index, url, png_url_large, png_url_native, png_url_color, mjd_start, mjd_end, n_images}]}`. `url`/`png_url_large` is a 6x Lanczos PNG, `png_url_native` the native pixels, `png_url_color` a false-colour composite of that visit (north up, east left). With `ra`/`dec` it matches the nearest cached target within 10 arcmin (catalogue or 2026 position); otherwise a JSON error `{"error", "nearest", "available_targets"}` (404) |
 | `GET /diff?target=&a=&b=` (or `ra=&dec=`) | 6x Lanczos PNG difference of visits `a` and `b` (mid-grey = no change, bright = brighter in `b`) |
+| `GET /frames_by_band?target=barnards-star` | `{format:"webp", n_bands:102, n_bands_with_data, n_bands_low_quality, frame_shape, large_shape, bands:[{band_index 0-101, detector, subchannel, wavelength_um, wavelength_um_min, wavelength_um_max, measured_wavelength_um, n_images, webp_url, noise_mjy_sr, nodata_fraction, quality ("ok"/"low"), quality_notes}]}` ordered by wavelength: one image per official SPHEREx spectral channel (6 detectors x 17), the band's cutouts stacked across all visits, same grid / asinh stretch (ONE scale shared by every band) / 6x Lanczos as `/frames`, saved as lossy WebP. `webp_url: null` = no data. On the deployed server only barnards-star, eps-ind-b and rw-aurigae have band images (others: 404 with `targets_with_bands`) |
 | `GET /spectrum?target=barnards-star` (or `ra=&dec=`; optional `exclude_saturated=true`) | `{target, flux_unit:"Jy", aperture_radius_px, n_points, n_saturated, spectrum:[{wavelength_um, flux, flux_err, detector, mjd, saturated, n_masked}]}` sorted by wavelength: aperture photometry (r = 3 px, median sky annulus 8-14 px, bad pixels masked) of the epoch-propagated target position in every cutout that contains it. `flux_err` is statistical only (from VARIANCE). **`saturated: true` means core pixels are flagged OVERFLOW, so the flux is a biased-low lower limit** (see below) |
 | `GET /frames_by_detector?target=barnards-star` | `{frame_shape, large_shape, shared_scale, png_url_color, color_channels, detectors:[{detector 1-6, channel, n_images, wavelength_range_um, png_url, png_url_native}]}`: one stacked frame per detector (all epochs), same grid as `/frames`, one shared asinh scale, plus a false-colour composite. A detector without usable data has `png_url: null` and a `note` |
 
@@ -65,3 +66,14 @@ Images are from the **SPHEREx** mission (NASA), obtained from the **NASA/IPAC In
 * Tried and NOT kept: drizzle on a finer grid (inconsistent sharpness, adds a lattice pattern) and unsharp-mask
   sharpening (no clear gain, lumpy saturated cores).
 * `static_export/compare.html` (served at `/static/compare.html`) shows before/after for every target.
+
+## Spectral bands
+
+* The 102 bands come from the official SPECTRAL_CHANNELS table (`api/spectral_channels.json`, 6 detectors x 17 channels,
+  edges in um). An exposure's band = the channel of ITS detector whose centre is nearest to the wavelength at the target.
+  Exposures beyond their detector's outermost channel edge (about 3%) are left out (`n_cutouts_outside_all_channels`).
+* Typical band = 3 images (one per visit); eps Ind B 2-9. Band images are single-exposure-like: expect grain, especially in
+  detectors 5-6, sky gradients in detectors 1-2, and dark pits in the saturated cores of bright stars.
+* `quality: "low"` marks bands that are a single image, much noisier than the target's typical band, or with a large
+  missing-data area. `noise_mjy_sr` is a pixel-to-pixel noise (2x-oversampled grid, so slightly underestimated).
+* `static_export/bands.html` (served at `/static/bands.html`) is a slider demo.

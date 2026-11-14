@@ -50,7 +50,7 @@ def make_fake_cache(cache: Path, key="barnards-star", visits=(60000.0, 60180.0, 
             hdr = w.to_header()
             hdr["MJD-AVG"] = mjd0 + 0.1 * k
             hdr["DETECTOR"] = 1 + k
-            wkeys, wave_hdu = make_fake_cutouts.wave_wcs(1.0 + 2.0 * k)  # detector 1: ~1 um, detector 2: ~3 um
+            wkeys, wave_hdu = make_fake_cutouts.wave_wcs(1.0 + 0.4 * k)  # detector 1: ~1.0 um (band 12), detector 2: ~1.4 um (band 27)
             hdr.update(wkeys)
             name = f"fake_{v}_{k}.fits"
             fits.HDUList([fits.PrimaryHDU(),

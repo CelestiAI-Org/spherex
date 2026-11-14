@@ -17,6 +17,7 @@ import io
 from PIL import Image
 from reproject import reproject_interp
 
+from api import bands as band_table
 from science import pipeline  # helpers only; its logic is not changed
 
 UPSCALE = 6                       # large PNGs are 6x the native grid
@@ -216,3 +217,72 @@ class Rendered:
 
 def render_target(cutouts, ra, dec, fov_arcmin) -> Rendered:
     return Rendered(LayerSet(cutouts, ra, dec, fov_arcmin))
+
+
+def local_noise(img, lag=3):
+    """Pixel-to-pixel noise (robust): MAD of differences between pixels `lag` apart, / sqrt(2).
+    Insensitive to smooth sky gradients and (mostly) to stars, unlike the spread of the sky pixels. The grid is
+    2x oversampled so neighbouring pixels are correlated; lag=3 keeps that small, but it still slightly
+    underestimates the noise per native pixel."""
+    d = (img[:, lag:] - img[:, :-lag])
+    d = d[np.isfinite(d)]
+    return float(1.4826 * np.median(np.abs(d - np.median(d))) / np.sqrt(2)) if d.size > 100 else None
+
+
+def render_bands(L: LayerSet) -> dict:
+    """One stacked, stretched, upscaled image per SPHEREx band (102), all epochs together.
+
+    Same grid, hole filling, asinh stretch and Lanczos upscale as the other images; ONE stretch is shared by
+    every band of the target so brightness changes along the slider are real. Exposures whose wavelength is
+    outside every channel of their detector are left out (n_unassigned)."""
+    groups, unassigned = {}, 0
+    for i, m in enumerate(L.meta):
+        b = band_table.assign(m["detector"], m["wavelength_um"])
+        if b is None:
+            unassigned += 1
+        else:
+            groups.setdefault(b, []).append(i)
+    raw = {}
+    for b, idx in groups.items():
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            img = fill_small_holes(np.nanmedian(L.layers[idx], axis=0))
+        if np.isfinite(img).mean() >= 0.05:                       # basically empty -> treated as no data
+            raw[b] = (img, [L.meta[i]["wavelength_um"] for i in idx], len(idx))
+    sc = stretch_scale([v[0] for v in raw.values()]) if raw else None
+    out = []
+    for c in band_table.CHANNELS:
+        entry = {**c, "n_images": 0, "measured_wavelength_um": None, "image": None, "native": None, "noise": None,
+                 "nodata_fraction": None, "quality": None, "quality_notes": []}
+        b = c["band_index"]
+        if b in raw:
+            img, waves, n = raw[b]
+            g = asinh_stretch(img, sc)
+            entry.update(n_images=n, measured_wavelength_um=[round(min(waves), 4), round(max(waves), 4)],
+                         image=upscale(g), native=to_uint8(g), noise=local_noise(img),
+                         nodata_fraction=float((~np.isfinite(img)).mean()))
+        elif b in groups:
+            entry["n_images"] = len(groups[b])
+        out.append(entry)
+    # quality flags, relative to this target's own typical band (so they work for faint and bright targets)
+    have = [e for e in out if e["image"] is not None]
+    if have:
+        med_noise = float(np.median([e["noise"] for e in have if e["noise"]]))
+        med_nodata = float(np.median([e["nodata_fraction"] for e in have]))
+        for e in have:
+            if e["n_images"] == 1:
+                e["quality_notes"].append("single image")
+            if e["noise"] and e["noise"] > 3 * med_noise:
+                e["quality_notes"].append("noisy (pixel noise > 3x this target's median band)")
+            if e["nodata_fraction"] > med_nodata + 0.15:
+                e["quality_notes"].append("large missing-data area")
+            e["quality"] = "low" if e["quality_notes"] else "ok"
+    return {"bands": out, "n_unassigned": unassigned, "scale": sc, "shape": L.shape,
+            "median_noise": med_noise if have else None}
+
+
+def webp_bytes(arr_uint8, quality=85) -> bytes:
+    img = Image.fromarray(np.ascontiguousarray(arr_uint8), mode="L")
+    buf = io.BytesIO()
+    img.save(buf, format="WEBP", quality=quality, method=6)
+    return buf.getvalue()
