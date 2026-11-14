@@ -20,7 +20,8 @@ from reproject import reproject_interp
 from api import bands as band_table
 from science import pipeline  # helpers only; its logic is not changed
 
-UPSCALE = 6                       # large PNGs are 6x the native grid
+UPSCALE = 6                       # large images are 6x the native grid (6' field -> 702 px)
+LARGE_FIELD_PX = 1024             # for big fields (15' -> ~293 px native) the long side is scaled to this instead
 BLACK_PCT, WHITE_PCT = 1.0, 99.95  # percentiles of the pooled pixels of all frames that share a scale
 # (99.7 clipped Barnard's Star to a flat white disc; 99.95 keeps shading in the core)
 CHANNELS = {"blue": (1, 2), "green": (3, 4), "red": (5, 6)}   # detectors -> colour channel (short -> long)
@@ -86,7 +87,7 @@ class LayerSet:
             for c in group:
                 self.layers.append(reproject_interp((pipeline._clean(c), c.wcs), self.wcs_out, shape_out=self.shape)[0])
                 self.meta.append({"epoch": e, "detector": c.detector, "mjd": c.mjd, "wavelength_um": c.wavelength_um})
-        self.layers = np.stack(self.layers)
+        self.layers = np.stack(self.layers).astype(np.float32)   # float32: a 15' grid x 450 layers is big
 
     def stack(self, epoch=None, detectors=None):
         """Median stack of the layers matching an epoch and/or a set of detectors; (image, n_images, meta rows)."""
@@ -119,6 +120,17 @@ def asinh_stretch(img, scale):
     return np.nan_to_num(np.clip(out, 0, 1), nan=0.0)
 
 
+def output_scale(shape) -> float:
+    """Upscale factor for a native grid: 6x for the small (6') frames, otherwise whatever gives ~1024 px."""
+    longest = max(shape)
+    return float(UPSCALE) if longest <= 200 else LARGE_FIELD_PX / longest
+
+
+def image_format(shape) -> str:
+    """Small frames keep PNG (as before); the big-field images are WebP to keep them small."""
+    return "png" if max(shape) <= 200 else "webp"
+
+
 def upscale(arr01, factor=UPSCALE):
     """Lanczos-resample a 0..1 array (2D, or HxWx3) to factor x its size -> uint8.
 
@@ -129,13 +141,24 @@ def upscale(arr01, factor=UPSCALE):
     out = []
     for ch in chans:
         h, w = ch.shape
-        big = np.asarray(Image.fromarray(np.ascontiguousarray(ch), mode="F").resize((w * factor, h * factor), Image.LANCZOS))
+        big = np.asarray(Image.fromarray(np.ascontiguousarray(ch), mode="F").resize(
+            (int(round(w * factor)), int(round(h * factor))), Image.LANCZOS))
         out.append(to_uint8(big))
     return out[0] if arr01.ndim == 2 else np.stack(out, axis=-1)
 
 
 def to_uint8(arr01):
     return (np.clip(np.asarray(arr01, dtype=float), 0, 1) * 255 + 0.5).astype(np.uint8)
+
+
+def image_bytes(arr_uint8, fmt="png", quality=88) -> bytes:
+    """PNG (lossless) or lossy WebP for a 2D grey or HxWx3 RGB uint8 array."""
+    if fmt == "png":
+        return png_bytes(arr_uint8)
+    img = Image.fromarray(np.ascontiguousarray(arr_uint8), mode="L" if arr_uint8.ndim == 2 else "RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="WEBP", quality=quality, method=6)
+    return buf.getvalue()
 
 
 def png_bytes(arr_uint8) -> bytes:
@@ -171,6 +194,8 @@ class Rendered:
     def __init__(self, layerset: LayerSet):
         L = layerset
         self.shape = L.shape
+        self.factor = output_scale(L.shape)
+        self.fmt = image_format(L.shape)
         self.channels = channel_legend(L.meta)
         # --- one frame per epoch, ONE shared stretch for all epochs (so visits are comparable)
         gray = [L.stack(epoch=e) for e in range(len(L.epochs))]
@@ -184,8 +209,8 @@ class Rendered:
             g = asinh_stretch(img, sc)
             mj = [m["mjd"] for m in meta]
             self.epochs.append({"n_images": n, "mjd_start": min(mj), "mjd_end": max(mj), "native": to_uint8(g),
-                                "large": upscale(g),
-                                "color": self._color({c: ch_stacks[c][e] for c in CHANNELS}, ch_scales)})
+                                "large": upscale(g, self.factor),
+                                "color": self._color({c: ch_stacks[c][e] for c in CHANNELS}, ch_scales, self.factor)})
         # --- one frame per detector (all epochs), one shared stretch for the six detectors
         det = {d: L.stack(detectors=(d,)) for d in range(1, 7)}
         present = [v[0] for v in det.values() if v[0] is not None]
@@ -198,21 +223,21 @@ class Rendered:
                      "native": None, "large": None}
             if img is not None:
                 g = asinh_stretch(img, dsc)
-                entry["native"], entry["large"] = to_uint8(g), upscale(g)
+                entry["native"], entry["large"] = to_uint8(g), upscale(g, self.factor)
             self.detectors.append(entry)
         # --- false-colour composite of the whole data set (all epochs)
         allch = {c: L.stack(detectors=CHANNELS[c])[0] for c in CHANNELS}
         allsc = {c: (stretch_scale([v]) if v is not None else None) for c, v in allch.items()}
-        self.color_all = self._color(allch, allsc)
+        self.color_all = self._color(allch, allsc, self.factor)
 
     @staticmethod
-    def _color(stacks, scales):
+    def _color(stacks, scales, factor=UPSCALE):
         """Large RGB uint8 from per-channel stacks (None = channel has no data); None if no channel has data."""
         if all(v is None for v in stacks.values()):
             return None
         shape = next(v.shape for v in stacks.values() if v is not None)
         chans = {c: (asinh_stretch(v, scales[c]) if v is not None else np.zeros(shape)) for c, v in stacks.items()}
-        return upscale(np.stack([chans["red"], chans["green"], chans["blue"]], axis=-1))
+        return upscale(np.stack([chans["red"], chans["green"], chans["blue"]], axis=-1), factor)
 
 
 def render_target(cutouts, ra, dec, fov_arcmin) -> Rendered:
@@ -250,6 +275,7 @@ def render_bands(L: LayerSet) -> dict:
         if np.isfinite(img).mean() >= 0.05:                       # basically empty -> treated as no data
             raw[b] = (img, [L.meta[i]["wavelength_um"] for i in idx], len(idx))
     sc = stretch_scale([v[0] for v in raw.values()]) if raw else None
+    factor = output_scale(L.shape)
     out = []
     for c in band_table.CHANNELS:
         entry = {**c, "n_images": 0, "measured_wavelength_um": None, "image": None, "native": None, "noise": None,
@@ -259,7 +285,7 @@ def render_bands(L: LayerSet) -> dict:
             img, waves, n = raw[b]
             g = asinh_stretch(img, sc)
             entry.update(n_images=n, measured_wavelength_um=[round(min(waves), 4), round(max(waves), 4)],
-                         image=upscale(g), native=to_uint8(g), noise=local_noise(img),
+                         image=upscale(g, factor), native=to_uint8(g), noise=local_noise(img),
                          nodata_fraction=float((~np.isfinite(img)).mean()))
         elif b in groups:
             entry["n_images"] = len(groups[b])
@@ -277,7 +303,7 @@ def render_bands(L: LayerSet) -> dict:
             if e["nodata_fraction"] > med_nodata + 0.15:
                 e["quality_notes"].append("large missing-data area")
             e["quality"] = "low" if e["quality_notes"] else "ok"
-    return {"bands": out, "n_unassigned": unassigned, "scale": sc, "shape": L.shape,
+    return {"bands": out, "n_unassigned": unassigned, "scale": sc, "shape": L.shape, "factor": factor,
             "median_noise": med_noise if have else None}
 
 

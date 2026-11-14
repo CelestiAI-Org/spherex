@@ -3,19 +3,20 @@
  "name": "Epsilon Indi B",
  "ra": 331.0966472578766,
  "dec": -56.800656008888886,
- "fov_arcmin": 6.0,
+ "fov_arcmin": 15.0,
  "frame_shape": [
-  117,
-  117
+  293,
+  293
  ],
  "large_shape": [
-  702,
-  702
+  1024,
+  1024
  ],
- "upscale": 6,
+ "upscale": 3.495,
+ "image_format": "webp",
  "shared_scale": true,
  "stretch": "asinh, 1st-99.95th percentile, shared by all detectors",
- "png_url_color": "/static/eps-ind-b/detectors_color.png",
+ "png_url_color": "/static/eps-ind-b/detectors_color.webp",
  "color_channels": {
   "blue": {
    "detectors": [
@@ -57,8 +58,8 @@
     0.748,
     1.103
    ],
-   "png_url": "/static/eps-ind-b/det1.png",
-   "png_url_native": "/static/eps-ind-b/det1_native.png"
+   "png_url": "/static/eps-ind-b/det1.webp",
+   "png_url_native": "/static/eps-ind-b/det1_native.webp"
   },
   {
    "detector": 2,
@@ -68,8 +69,8 @@
     1.088,
     1.644
    ],
-   "png_url": "/static/eps-ind-b/det2.png",
-   "png_url_native": "/static/eps-ind-b/det2_native.png"
+   "png_url": "/static/eps-ind-b/det2.webp",
+   "png_url_native": "/static/eps-ind-b/det2_native.webp"
   },
   {
    "detector": 3,
@@ -79,19 +80,19 @@
     1.612,
     2.396
    ],
-   "png_url": "/static/eps-ind-b/det3.png",
-   "png_url_native": "/static/eps-ind-b/det3_native.png"
+   "png_url": "/static/eps-ind-b/det3.webp",
+   "png_url_native": "/static/eps-ind-b/det3_native.webp"
   },
   {
    "detector": 4,
-   "n_images": 44,
+   "n_images": 43,
    "channel": "green",
    "wavelength_range_um": [
     2.443,
     3.78
    ],
-   "png_url": "/static/eps-ind-b/det4.png",
-   "png_url_native": "/static/eps-ind-b/det4_native.png"
+   "png_url": "/static/eps-ind-b/det4.webp",
+   "png_url_native": "/static/eps-ind-b/det4_native.webp"
   },
   {
    "detector": 5,
@@ -101,8 +102,8 @@
     3.806,
     4.417
    ],
-   "png_url": "/static/eps-ind-b/det5.png",
-   "png_url_native": "/static/eps-ind-b/det5_native.png"
+   "png_url": "/static/eps-ind-b/det5.webp",
+   "png_url_native": "/static/eps-ind-b/det5_native.webp"
   },
   {
    "detector": 6,
@@ -112,8 +113,8 @@
     4.401,
     5.011
    ],
-   "png_url": "/static/eps-ind-b/det6.png",
-   "png_url_native": "/static/eps-ind-b/det6_native.png"
+   "png_url": "/static/eps-ind-b/det6.webp",
+   "png_url_native": "/static/eps-ind-b/det6_native.webp"
   }
  ]
 }

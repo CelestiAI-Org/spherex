@@ -26,7 +26,9 @@ sys.path.insert(0, str(ROOT))
 from fastapi.testclient import TestClient  # noqa: E402
 
 from api import display  # noqa: E402
+import api.load_cache as load_cache  # noqa: E402
 from api.load_cache import load_index  # noqa: E402
+from api import main as api_main  # noqa: E402
 from api.main import app, cached_fov, compute_frames  # noqa: E402
 from api.targets import REAL_TARGETS, TARGETS  # noqa: E402
 
@@ -36,6 +38,27 @@ BAND_TARGETS = ("barnards-star", "eps-ind-b", "rw-aurigae")   # 102 band images 
 
 def save_png(client, url, dest):
     dest.write_bytes(client.get(url).content)
+
+
+def export_small_field_version(client, key, dest):
+    """Render the previous 6' version of a big-field target from the small cache, for the comparison page."""
+    dest.mkdir(parents=True)
+    load_cache.use_large(False)
+    try:
+        for fn in (api_main.compute_frames, api_main.display_for, api_main.layerset_for):
+            fn.cache_clear()
+        t = TARGETS[key]
+        r = client.get("/frames", params={"ra": t["ra"], "dec": t["dec"]}).json()
+        for f in r["frames"]:
+            save_png(client, f["png_url_large"], dest / f"{f['index']}{Path(f['png_url_large']).suffix}")
+            if f["png_url_color"]:
+                save_png(client, f["png_url_color"], dest / f"{f['index']}_color{Path(f['png_url_color']).suffix}")
+        (dest / "info.json").write_text(json.dumps({"fov_arcmin": r["fov_arcmin"], "frame_shape": r["frame_shape"],
+                                                   "n_images": [f["n_images"] for f in r["frames"]]}))
+    finally:
+        load_cache.use_large(True)
+        for fn in (api_main.compute_frames, api_main.display_for, api_main.layerset_for):
+            fn.cache_clear()
 
 
 def export_target(client, key):
@@ -49,23 +72,28 @@ def export_target(client, key):
     (d / "before").mkdir(parents=True)
     for f in body["frames"]:
         i = f["index"]
-        for field, name in (("png_url_large", f"{i}.png"), ("png_url_native", f"{i}_native.png"), ("png_url_color", f"{i}_color.png")):
+        for field, tag in (("png_url_large", ""), ("png_url_native", "_native"), ("png_url_color", "_color")):
             if f[field]:
+                name = f"{i}{tag}{Path(f[field]).suffix}"
                 save_png(client, f[field], d / name)
                 f[field] = f"/static/{key}/{name}"
         f["url"] = f["png_url_large"]
     # the old look: the pipeline's linear 0-1 frame, shown with nearest-neighbour blocks at the same size
-    frames, _, _ = compute_frames(key, round(t["ra"], 5), round(t["dec"], 5), round(min(6.0, cached_fov(key)), 3))
-    for i, fr in enumerate(frames):
-        Image.fromarray(display.to_uint8(fr.image)).resize((fr.image.shape[1] * display.UPSCALE, fr.image.shape[0] * display.UPSCALE),
-                                                           Image.NEAREST).save(d / "before" / f"{i}.png")
+    if body["image_format"] == "png":
+        frames, _, _ = compute_frames(key, round(t["ra"], 5), round(t["dec"], 5), round(min(6.0, cached_fov(key)), 3))
+        for i, fr in enumerate(frames):
+            Image.fromarray(display.to_uint8(fr.image)).resize((fr.image.shape[1] * display.UPSCALE, fr.image.shape[0] * display.UPSCALE),
+                                                               Image.NEAREST).save(d / "before" / f"{i}.png")
+    else:  # big-field target: the comparison is against the previous 6' version rendered from the small cache
+        export_small_field_version(client, key, d / "fov6")
     # differences between consecutive visits
     body["diffs"] = []
     for i in range(len(body["frames"]) - 1):
         r = client.get("/diff", params={"ra": t["ra"], "dec": t["dec"], "a": i, "b": i + 1})
         if r.status_code == 200:
-            (d / f"diff_{i}_{i + 1}.png").write_bytes(r.content)
-            body["diffs"].append({"a": i, "b": i + 1, "url": f"/static/{key}/diff_{i}_{i + 1}.png"})
+            dext = ".webp" if r.headers["content-type"] == "image/webp" else ".png"
+            (d / f"diff_{i}_{i + 1}{dext}").write_bytes(r.content)
+            body["diffs"].append({"a": i, "b": i + 1, "url": f"/static/{key}/diff_{i}_{i + 1}{dext}"})
     (d / "frames.json").write_text(json.dumps(body, indent=1))
     # spectrum + detectors
     spec = client.get("/spectrum", params={"target": key}).json()
@@ -74,12 +102,14 @@ def export_target(client, key):
     for e in det["detectors"]:
         if e["png_url"]:
             n = e["detector"]
-            save_png(client, e["png_url"], d / f"det{n}.png")
-            save_png(client, e["png_url_native"], d / f"det{n}_native.png")
-            e["png_url"], e["png_url_native"] = f"/static/{key}/det{n}.png", f"/static/{key}/det{n}_native.png"
+            x = Path(e["png_url"]).suffix
+            save_png(client, e["png_url"], d / f"det{n}{x}")
+            save_png(client, e["png_url_native"], d / f"det{n}_native{x}")
+            e["png_url"], e["png_url_native"] = f"/static/{key}/det{n}{x}", f"/static/{key}/det{n}_native{x}"
     if det["png_url_color"]:
-        save_png(client, det["png_url_color"], d / "detectors_color.png")
-        det["png_url_color"] = f"/static/{key}/detectors_color.png"
+        x = Path(det["png_url_color"]).suffix
+        save_png(client, det["png_url_color"], d / f"detectors_color{x}")
+        det["png_url_color"] = f"/static/{key}/detectors_color{x}"
     (d / "detectors.json").write_text(json.dumps(det, indent=1))
     if key in BAND_TARGETS:
         bands = client.get("/frames_by_band", params={"target": key}).json()
@@ -101,8 +131,16 @@ def write_compare_page(exported):
         body = json.loads((OUT / key / "frames.json").read_text())
         det = json.loads((OUT / key / "detectors.json").read_text())
         cells = []
+        fov6 = OUT / key / "fov6"
         for f in body["frames"]:
             i = f["index"]
+            if fov6.exists():   # big-field target: previous 6' version vs the 15' version
+                p6 = next(fov6.glob(f"{i}.*"), None)
+                if p6:
+                    cells.append(f'<figure><figcaption>visit {i + 1} previous 6\' field</figcaption><img src="/static/{key}/fov6/{p6.name}"></figure>')
+                cells.append(f'<figure><figcaption>visit {i + 1} NEW {body["fov_arcmin"]:g}\' field</figcaption><img src="{f["png_url_large"]}"></figure>'
+                             + (f'<figure><figcaption>visit {i + 1} colour</figcaption><img src="{f["png_url_color"]}"></figure>' if f["png_url_color"] else ""))
+                continue
             cells.append(f'<figure><figcaption>visit {i + 1} BEFORE (linear, nearest)</figcaption><img src="/static/{key}/before/{i}.png"></figure>'
                          f'<figure><figcaption>visit {i + 1} AFTER (asinh, Lanczos)</figcaption><img src="{f["png_url_large"]}"></figure>'
                          + (f'<figure><figcaption>visit {i + 1} colour</figcaption><img src="{f["png_url_color"]}"></figure>' if f["png_url_color"] else ""))

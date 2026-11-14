@@ -3,19 +3,20 @@
  "name": "Barnard's Star",
  "ra": 269.44627154408244,
  "dec": 4.768199512222222,
- "fov_arcmin": 6.0,
+ "fov_arcmin": 15.0,
  "frame_shape": [
-  117,
-  117
+  292,
+  292
  ],
  "large_shape": [
-  702,
-  702
+  1024,
+  1024
  ],
- "upscale": 6,
+ "upscale": 3.507,
+ "image_format": "webp",
  "shared_scale": true,
  "stretch": "asinh, 1st-99.95th percentile, shared by all detectors",
- "png_url_color": "/static/barnards-star/detectors_color.png",
+ "png_url_color": "/static/barnards-star/detectors_color.webp",
  "color_channels": {
   "blue": {
    "detectors": [
@@ -33,7 +34,7 @@
     4
    ],
    "wavelength_um": [
-    1.62,
+    1.63,
     3.8
    ]
   },
@@ -51,14 +52,14 @@
  "detectors": [
   {
    "detector": 1,
-   "n_images": 60,
+   "n_images": 59,
    "channel": "blue",
    "wavelength_range_um": [
     0.738,
     1.107
    ],
-   "png_url": "/static/barnards-star/det1.png",
-   "png_url_native": "/static/barnards-star/det1_native.png"
+   "png_url": "/static/barnards-star/det1.webp",
+   "png_url_native": "/static/barnards-star/det1_native.webp"
   },
   {
    "detector": 2,
@@ -68,19 +69,19 @@
     1.084,
     1.653
    ],
-   "png_url": "/static/barnards-star/det2.png",
-   "png_url_native": "/static/barnards-star/det2_native.png"
+   "png_url": "/static/barnards-star/det2.webp",
+   "png_url_native": "/static/barnards-star/det2_native.webp"
   },
   {
    "detector": 3,
    "n_images": 57,
    "channel": "green",
    "wavelength_range_um": [
-    1.615,
-    2.373
+    1.627,
+    2.411
    ],
-   "png_url": "/static/barnards-star/det3.png",
-   "png_url_native": "/static/barnards-star/det3_native.png"
+   "png_url": "/static/barnards-star/det3.webp",
+   "png_url_native": "/static/barnards-star/det3_native.webp"
   },
   {
    "detector": 4,
@@ -90,8 +91,8 @@
     2.426,
     3.799
    ],
-   "png_url": "/static/barnards-star/det4.png",
-   "png_url_native": "/static/barnards-star/det4_native.png"
+   "png_url": "/static/barnards-star/det4.webp",
+   "png_url_native": "/static/barnards-star/det4_native.webp"
   },
   {
    "detector": 5,
@@ -101,8 +102,8 @@
     3.798,
     4.43
    ],
-   "png_url": "/static/barnards-star/det5.png",
-   "png_url_native": "/static/barnards-star/det5_native.png"
+   "png_url": "/static/barnards-star/det5.webp",
+   "png_url_native": "/static/barnards-star/det5_native.webp"
   },
   {
    "detector": 6,
@@ -112,8 +113,8 @@
     4.394,
     5.002
    ],
-   "png_url": "/static/barnards-star/det6.png",
-   "png_url_native": "/static/barnards-star/det6_native.png"
+   "png_url": "/static/barnards-star/det6.webp",
+   "png_url_native": "/static/barnards-star/det6_native.webp"
   }
  ]
 }

@@ -107,6 +107,13 @@ def difference(a, b):
 
 # ---------- helpers ----------
 
+def resolve_fov(key: str, requested: float | None) -> float:
+    """Field of view to use: the cached cutouts' size by default (6' normally, 15' for the large cache),
+    or a smaller requested one."""
+    cached = cached_fov(key)
+    return cached if requested is None else min(requested, cached)
+
+
 def cached_fov(key: str) -> float:
     idx = target_dir(key) / "index.json"
     if idx.exists():
@@ -235,16 +242,18 @@ def bands_for(key: str, ra: float, dec: float, fov: float):
 
 @app.get("/frames")
 def frames(ra: float | None = None, dec: float | None = None, target: str | None = None,
-           fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, le=60)):
+           fov: float | None = Query(None, gt=0, le=60)):
     """Frames for the cached target nearest to (ra, dec) (within 10 arcmin), or for `target=<key>`.
 
-    Each frame has `url` / `png_url_large` (6x Lanczos, asinh stretch shared by all frames), `png_url_native`
-    (same stretch, native pixels) and `png_url_color` (false-colour composite of that visit, or null).
+    Each frame has `url` / `png_url_large` (Lanczos upscale, asinh stretch shared by all frames), `png_url_native`
+    (same stretch, native pixels) and `png_url_color` (false-colour composite of that visit, or null). The field
+    is the cached cutout size (6' normally, 15' for the hero targets); `image_format` says png (6' frames, 6x) or
+    webp (15' frames, ~1024 px) - the key names keep "png" for backward compatibility.
     """
     key, t, dist = pick_target(ra, dec, target)
     if use_static(key):  # pre-rendered; `fov` is ignored
         return {**static_frames(key), "matched_distance_arcmin": round(dist, 2)}
-    fov = min(fov, cached_fov(key))
+    fov = resolve_fov(key, fov)
     ra_c, dec_c, fov_c = round(t["ra"], 5), round(t["dec"], 5), round(fov, 3)
     frs, source, error = compute_frames(key, ra_c, dec_c, fov_c)
     if not frs:
@@ -252,6 +261,10 @@ def frames(ra: float | None = None, dec: float | None = None, target: str | None
     rend = display_for(key, ra_c, dec_c, fov_c) if source == "science.pipeline" else None
     if rend and (len(rend.epochs) != len(frs) or [e["n_images"] for e in rend.epochs] != [f.n_images for f in frs]):
         rend = None  # grouping differs from the pipeline's frames: do not mix them
+    shape = frs[0].image.shape
+    fmt = rend.fmt if rend else display.image_format(shape)          # png for 6' frames, webp for big fields
+    factor = rend.factor if rend else display.output_scale(shape)
+    ext = f".{fmt}"
     base = f"/img/{key}/fov{fov:g}"
     out_dir = RENDER_DIR / key / f"fov{fov:g}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -260,18 +273,19 @@ def frames(ra: float | None = None, dec: float | None = None, target: str | None
         if rend:
             native, large, color = rend.epochs[i]["native"], rend.epochs[i]["large"], rend.epochs[i]["color"]
         else:  # plain frames from the pipeline/fallback: same Lanczos upscale, their own (linear) scaling
-            native, large, color = display.to_uint8(f.image), display.upscale(f.image), None
-        (out_dir / f"{i}.png").write_bytes(display.png_bytes(large))
-        (out_dir / f"{i}_native.png").write_bytes(display.png_bytes(native))
+            native, large, color = display.to_uint8(f.image), display.upscale(f.image, factor), None
+        (out_dir / f"{i}{ext}").write_bytes(display.image_bytes(large, fmt))
+        (out_dir / f"{i}_native{ext}").write_bytes(display.image_bytes(native, fmt))
         if color is not None:
-            (out_dir / f"{i}_color.png").write_bytes(display.png_bytes(color))
-        items.append({"index": i, "url": f"{base}/{i}.png", "png_url_large": f"{base}/{i}.png",
-                      "png_url_native": f"{base}/{i}_native.png",
-                      "png_url_color": f"{base}/{i}_color.png" if color is not None else None,
+            (out_dir / f"{i}_color{ext}").write_bytes(display.image_bytes(color, fmt, quality=85))
+        items.append({"index": i, "url": f"{base}/{i}{ext}", "png_url_large": f"{base}/{i}{ext}",
+                      "png_url_native": f"{base}/{i}_native{ext}",
+                      "png_url_color": f"{base}/{i}_color{ext}" if color is not None else None,
                       "mjd_start": f.mjd_start, "mjd_end": f.mjd_end, "n_images": f.n_images})
     out = {"target": key, "name": t["name"], "ra": t["ra"], "dec": t["dec"], "fov_arcmin": fov,
            "pipeline": source, "matched_distance_arcmin": round(dist, 2),
-           "frame_shape": list(frs[0].image.shape), "large_shape": list(large.shape[:2]), "upscale": display.UPSCALE,
+           "frame_shape": list(shape), "large_shape": list(large.shape[:2]), "upscale": round(factor, 3),
+           "image_format": fmt,
            "stretch": ({"type": "asinh", "black_percentile": display.BLACK_PCT, "white_percentile": display.WHITE_PCT,
                         "shared_across_frames": True} if rend else {"type": "linear (pipeline scaling)"}),
            "color_channels": rend.channels if rend else None, "frames": items}
@@ -282,15 +296,15 @@ def frames(ra: float | None = None, dec: float | None = None, target: str | None
 
 @app.get("/diff")
 def diff(a: int, b: int, ra: float | None = None, dec: float | None = None, target: str | None = None,
-         fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, le=60)):
+         fov: float | None = Query(None, gt=0, le=60)):
     """PNG difference of frames a and b, 6x Lanczos (mid-grey = no change, bright = brighter in b)."""
     key, t, _ = pick_target(ra, dec, target)
     if use_static(key):  # pre-rendered differences between consecutive frames only
-        path = STATIC_EXPORT_DIR / key / f"diff_{a}_{b}.png"
-        if not path.exists():
+        found = sorted((STATIC_EXPORT_DIR / key).glob(f"diff_{a}_{b}.*"))
+        if not found:
             raise ApiError(404, "This server only has pre-rendered differences between consecutive frames (b = a + 1)")
-        return Response(path.read_bytes(), media_type="image/png")
-    fov = min(fov, cached_fov(key))
+        return Response(found[0].read_bytes(), media_type="image/webp" if found[0].suffix == ".webp" else "image/png")
+    fov = resolve_fov(key, fov)
     ra_c, dec_c, fov_c = round(t["ra"], 5), round(t["dec"], 5), round(fov, 3)
     frs, source, _ = compute_frames(key, ra_c, dec_c, fov_c)
     for idx in (a, b):
@@ -303,12 +317,14 @@ def diff(a: int, b: int, ra: float | None = None, dec: float | None = None, targ
                         n_images=frs[i].n_images) for i in (a, b))
         d, _ = difference(fa, fb)
         shown = display.signed_asinh(np.asarray(d, dtype=float))
+        fmt, factor = rend.fmt, rend.factor
     else:
         d, _ = difference(frs[a], frs[b])
         d = np.asarray(d, dtype=float)
         scale = np.nanpercentile(np.abs(d), 99.5) or 1.0
         shown = 0.5 + 0.5 * np.clip(d / scale, -1, 1)
-    return Response(display.png_bytes(display.upscale(shown)), media_type="image/png")
+        fmt, factor = display.image_format(shown.shape), display.output_scale(shown.shape)
+    return Response(display.image_bytes(display.upscale(shown, factor), fmt), media_type=f"image/{fmt}")
 
 
 @app.get("/spectrum")
@@ -335,7 +351,7 @@ def spectrum(ra: float | None = None, dec: float | None = None, target: str | No
 
 @app.get("/frames_by_detector")
 def frames_by_detector(ra: float | None = None, dec: float | None = None, target: str | None = None,
-                       fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, le=60)):
+                       fov: float | None = Query(None, gt=0, le=60)):
     """One stacked frame per detector (1-6, all epochs) on one shared asinh stretch, plus a false-colour
     composite (`png_url_color`; `color_channels` says which detectors/wavelengths are blue, green, red).
     Each detector has `channel`, `wavelength_range_um`, `png_url` (6x Lanczos) and `png_url_native`.
@@ -346,11 +362,12 @@ def frames_by_detector(ra: float | None = None, dec: float | None = None, target
         if not path.exists():
             raise ApiError(404, f"No pre-computed detector frames for {key}")
         return json.loads(path.read_text())
-    fov = min(fov, cached_fov(key))
+    fov = resolve_fov(key, fov)
     rend = display_for(key, round(t["ra"], 5), round(t["dec"], 5), round(fov, 3))
     if rend is None:
         raise ApiError(503, f"Could not build the detector frames for {key} (no usable cutouts)")
     base = f"/img/{key}/detectors"
+    ext = f".{rend.fmt}"
     out_dir = RENDER_DIR / key / "detectors"
     out_dir.mkdir(parents=True, exist_ok=True)
     items = []
@@ -359,19 +376,19 @@ def frames_by_detector(ra: float | None = None, dec: float | None = None, target
         item["png_url"] = item["png_url_native"] = None
         if e["large"] is not None:
             d = e["detector"]
-            (out_dir / f"det{d}.png").write_bytes(display.png_bytes(e["large"]))
-            (out_dir / f"det{d}_native.png").write_bytes(display.png_bytes(e["native"]))
-            item["png_url"], item["png_url_native"] = f"{base}/det{d}.png", f"{base}/det{d}_native.png"
+            (out_dir / f"det{d}{ext}").write_bytes(display.image_bytes(e["large"], rend.fmt))
+            (out_dir / f"det{d}_native{ext}").write_bytes(display.image_bytes(e["native"], rend.fmt))
+            item["png_url"], item["png_url_native"] = f"{base}/det{d}{ext}", f"{base}/det{d}_native{ext}"
         else:
             item["note"] = "no usable cutout for this detector (target outside the images or too many bad pixels)"
         items.append(item)
     color_url = None
     if rend.color_all is not None:
-        (out_dir / "color.png").write_bytes(display.png_bytes(rend.color_all))
-        color_url = f"{base}/color.png"
+        (out_dir / f"color{ext}").write_bytes(display.image_bytes(rend.color_all, rend.fmt, quality=85))
+        color_url = f"{base}/color{ext}"
     return {"target": key, "name": t["name"], "ra": t["ra"], "dec": t["dec"], "fov_arcmin": fov,
-            "frame_shape": list(rend.shape), "large_shape": [rend.shape[0] * display.UPSCALE, rend.shape[1] * display.UPSCALE],
-            "upscale": display.UPSCALE, "shared_scale": True, "stretch": "asinh, 1st-99.95th percentile, shared by all detectors",
+            "frame_shape": list(rend.shape), "large_shape": [round(rend.shape[0] * rend.factor), round(rend.shape[1] * rend.factor)],
+            "upscale": round(rend.factor, 3), "image_format": rend.fmt, "shared_scale": True, "stretch": "asinh, 1st-99.95th percentile, shared by all detectors",
             "png_url_color": color_url, "color_channels": rend.channels, "detectors": items}
 
 
@@ -385,7 +402,7 @@ def targets_with_bands() -> list[str]:
 
 @app.get("/frames_by_band")
 def frames_by_band(ra: float | None = None, dec: float | None = None, target: str | None = None,
-                   fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, le=60)):
+                   fov: float | None = Query(None, gt=0, le=60)):
     """One image per SPHEREx spectral band (102 = 6 detectors x 17 channels), ordered by wavelength, for a
     wavelength slider. Each band stacks that band's cutouts across ALL visits with the same grid, hole filling,
     asinh stretch (ONE scale shared by all bands) and Lanczos upscale as /frames; images are lossy WebP.
@@ -397,7 +414,7 @@ def frames_by_band(ra: float | None = None, dec: float | None = None, target: st
             raise ApiError(404, f"Band images were only pre-computed for some targets, not {key}",
                            targets_with_bands=targets_with_bands())
         return json.loads(path.read_text())
-    fov = min(fov, cached_fov(key))
+    fov = resolve_fov(key, fov)
     try:
         r = bands_for(key, round(t["ra"], 5), round(t["dec"], 5), round(fov, 3))
     except Exception as e:  # noqa: BLE001
@@ -425,7 +442,7 @@ def frames_by_band(ra: float | None = None, dec: float | None = None, target: st
     h, w = r["shape"]
     return {"target": key, "name": t["name"], "ra": t["ra"], "dec": t["dec"], "fov_arcmin": fov,
             "format": "webp", "webp_quality": BAND_WEBP_QUALITY, "frame_shape": [h, w],
-            "large_shape": [h * display.UPSCALE, w * display.UPSCALE], "upscale": display.UPSCALE,
+            "large_shape": [round(h * r["factor"]), round(w * r["factor"])], "upscale": round(r["factor"], 3),
             "stretch": "asinh, 1st-99.95th percentile of all bands pooled (one scale for every band)",
             "n_bands": len(items), "n_bands_with_data": sum(1 for i in items if i["webp_url"]),
             "n_cutouts_outside_all_channels": r["n_unassigned"],

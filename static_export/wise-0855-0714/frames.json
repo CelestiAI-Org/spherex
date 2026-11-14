@@ -14,7 +14,8 @@
   702,
   702
  ],
- "upscale": 6,
+ "upscale": 6.0,
+ "image_format": "png",
  "stretch": {
   "type": "asinh",
   "black_percentile": 1.0,
