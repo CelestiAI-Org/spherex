@@ -5,18 +5,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from api.load_cache import load_index  # noqa: E402
+from api.load_cache import load_cutouts, load_index  # noqa: E402
 from api.targets import REAL_TARGETS  # noqa: E402
 
 GAP = 60.0  # days, same as api/fallback.py
 
 
 def main():
-    lines = ["| target | SIA images | cached cutouts | visits | MJD ranges of visits | flag |", "|---|---|---|---|---|---|"]
+    lines = ["| target | SIA images | cached cutouts | with wavelength | wavelength range (um) | visits | MJD ranges of visits | flag |", "|---|---|---|---|---|---|---|---|"]
     for key in REAL_TARGETS:
         rows = load_index(key)
         if not rows:
-            lines.append(f"| {key} | - | 0 | - | not cached yet | NOT CACHED |")
+            lines.append(f"| {key} | - | 0 | - | - | - | not cached yet | NOT CACHED |")
             continue
         sia = json.loads((ROOT / "cache" / key / "search.json").read_text())["n_images"] if (ROOT / "cache" / key / "search.json").exists() else "?"
         m = sorted(r["mjd"] for r in rows)
@@ -26,9 +26,11 @@ def main():
                 visits.append([t, t])
             else:
                 visits[-1][1] = t
+        waves = [c.wavelength_um for c in load_cutouts(key) if c.wavelength_um is not None]
+        wr = f"{min(waves):.2f}-{max(waves):.2f}" if waves else "-"
         rng = "; ".join(f"{a:.0f}-{b:.0f}" for a, b in visits)
         flag = "**FEWER THAN 2 VISITS**" if len(visits) < 2 else ""
-        lines.append(f"| {key} | {sia} | {len(rows)} | {len(visits)} | {rng} | {flag} |")
+        lines.append(f"| {key} | {sia} | {len(rows)} | {len(waves)} | {wr} | {len(visits)} | {rng} | {flag} |")
     text = "\n".join(lines)
     print(text)
     (ROOT / "DATA_REPORT.md").write_text("# Data per target\n\nVisits = groups of images separated by > 60 days.\n\n" + text + "\n")

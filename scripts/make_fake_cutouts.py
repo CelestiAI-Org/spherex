@@ -56,6 +56,26 @@ def make_wcs(ra0, dec0, off_x_px, off_y_px, rot_deg):
     return w
 
 
+def wave_wcs(centre_um: float):
+    """(header keys, WCS-WAVE table HDU) copying the real SPHEREx layout: an alternate WCS "W" with a
+    WAVE-TAB lookup of (wavelength, bandwidth) over the pixel grid. Wavelength grows ~0.04 um across x."""
+    keys = {"WCSAXESW": 2, "WCSNAMEW": "Approximated per-pixel wavelength and bandwidth",
+            "CNAME1W": "Wavelength", "CNAME2W": "Bandwidth", "CRPIX1W": 0.0, "CRPIX2W": 0.0,
+            "CDELT1W": 1, "CDELT2W": 1, "CUNIT1W": "um", "CUNIT2W": "um", "CTYPE1W": "WAVE-TAB",
+            "CTYPE2W": "WAVE-TAB", "CRVAL1W": 1, "CRVAL2W": 1, "PV1_3W": 1, "PV2_3W": 2,
+            "PS1_0W": "WCS-WAVE", "PS2_0W": "WCS-WAVE", "PS1_1W": "VALUES", "PS2_1W": "VALUES",
+            "PS1_2W": "X", "PS2_2W": "Y"}
+    xs = np.array([1, 33, 66], dtype=np.int32)
+    values = np.zeros((3, 3, 2), dtype=np.float32)                 # (y, x, [wavelength, bandwidth])
+    values[:, :, 0] = centre_um + 0.04 * (xs[None, :] - 33) / 65.0
+    values[:, :, 1] = 0.02
+    hdu = fits.BinTableHDU.from_columns([
+        fits.Column(name="X", format="3J", dim="(3)", array=xs[None, :]),
+        fits.Column(name="Y", format="3J", dim="(3)", array=xs[None, :]),
+        fits.Column(name="VALUES", format="18E", dim="(2,3,3)", array=values.reshape(1, 3, 3, 2))], name="WCS-WAVE")
+    return keys, hdu
+
+
 def add_star(img, x, y, flux):
     r = int(5 * PSF_SIGMA) + 1
     x0, y0 = int(round(x)), int(round(y))
@@ -112,13 +132,17 @@ def main():
             hdr = w.to_header()
             hdr["MJD-AVG"] = mjd
             hdr["DETECTOR"] = det
+            wave_um = 0.7 + 0.75 * (det - 1) + float(rng.uniform(0.05, 0.7))   # each detector covers its own band
+            wkeys, wave_hdu = wave_wcs(wave_um)
+            hdr.update(wkeys)
             name = f"fake_v{v}_{k}_D{det}.fits"
             fits.HDUList([fits.PrimaryHDU(),
                           fits.ImageHDU(image.astype(np.float32), hdr, name="IMAGE"),
                           fits.ImageHDU(flags, name="FLAGS"),
-                          fits.ImageHDU(zodi.astype(np.float32), name="ZODI")]).writeto(out / "cutouts" / name, overwrite=True)
+                          fits.ImageHDU(zodi.astype(np.float32), name="ZODI"),
+                          fits.ImageHDU(np.full((SIZE, SIZE), 1.5 ** 2, dtype=np.float32), name="VARIANCE"), wave_hdu]).writeto(out / "cutouts" / name, overwrite=True)
             index.append({"file": name, "mjd": mjd, "detector": det})
-            truth_cutouts.append({"file": name, "visit": v, "mjd": mjd, "offset_px": [ox, oy], "rotation_deg": rot,
+            truth_cutouts.append({"file": name, "visit": v, "mjd": mjd, "offset_px": [ox, oy], "rotation_deg": rot, "wavelength_um": wave_um,
                                   "mover_pixel_xy": [mx, my]})
 
     (out / "index.json").write_text(json.dumps({"fov_arcmin": FOV_ARCMIN, "cutouts": index}, indent=1))

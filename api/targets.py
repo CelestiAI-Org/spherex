@@ -32,6 +32,10 @@ _CATALOGUE = {
 }
 
 
+def mjd_to_year(mjd: float) -> float:
+    return 2000.0 + (mjd - 51544.5) / 365.25
+
+
 def propagate(t: dict, epoch: float = MID_SURVEY_EPOCH):
     """Catalogue position moved by proper motion to `epoch` -> (ra_deg, dec_deg)."""
     dt = epoch - t["epoch_cat"]

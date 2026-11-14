@@ -1,0 +1,119 @@
+{
+ "target": "barnards-star",
+ "name": "Barnard's Star",
+ "ra": 269.44627154408244,
+ "dec": 4.768199512222222,
+ "fov_arcmin": 6.0,
+ "frame_shape": [
+  117,
+  117
+ ],
+ "large_shape": [
+  702,
+  702
+ ],
+ "upscale": 6,
+ "shared_scale": true,
+ "stretch": "asinh, 1st-99.95th percentile, shared by all detectors",
+ "png_url_color": "/static/barnards-star/detectors_color.png",
+ "color_channels": {
+  "blue": {
+   "detectors": [
+    1,
+    2
+   ],
+   "wavelength_um": [
+    0.74,
+    1.65
+   ]
+  },
+  "green": {
+   "detectors": [
+    3,
+    4
+   ],
+   "wavelength_um": [
+    1.62,
+    3.8
+   ]
+  },
+  "red": {
+   "detectors": [
+    5,
+    6
+   ],
+   "wavelength_um": [
+    3.8,
+    5.0
+   ]
+  }
+ },
+ "detectors": [
+  {
+   "detector": 1,
+   "n_images": 60,
+   "channel": "blue",
+   "wavelength_range_um": [
+    0.738,
+    1.107
+   ],
+   "png_url": "/static/barnards-star/det1.png",
+   "png_url_native": "/static/barnards-star/det1_native.png"
+  },
+  {
+   "detector": 2,
+   "n_images": 61,
+   "channel": "blue",
+   "wavelength_range_um": [
+    1.084,
+    1.653
+   ],
+   "png_url": "/static/barnards-star/det2.png",
+   "png_url_native": "/static/barnards-star/det2_native.png"
+  },
+  {
+   "detector": 3,
+   "n_images": 57,
+   "channel": "green",
+   "wavelength_range_um": [
+    1.615,
+    2.373
+   ],
+   "png_url": "/static/barnards-star/det3.png",
+   "png_url_native": "/static/barnards-star/det3_native.png"
+  },
+  {
+   "detector": 4,
+   "n_images": 58,
+   "channel": "green",
+   "wavelength_range_um": [
+    2.426,
+    3.799
+   ],
+   "png_url": "/static/barnards-star/det4.png",
+   "png_url_native": "/static/barnards-star/det4_native.png"
+  },
+  {
+   "detector": 5,
+   "n_images": 61,
+   "channel": "red",
+   "wavelength_range_um": [
+    3.798,
+    4.43
+   ],
+   "png_url": "/static/barnards-star/det5.png",
+   "png_url_native": "/static/barnards-star/det5_native.png"
+  },
+  {
+   "detector": 6,
+   "n_images": 58,
+   "channel": "red",
+   "wavelength_range_um": [
+    4.394,
+    5.002
+   ],
+   "png_url": "/static/barnards-star/det6.png",
+   "png_url_native": "/static/barnards-star/det6_native.png"
+  }
+ ]
+}

@@ -1,0 +1,119 @@
+{
+ "target": "wise-0855-0714",
+ "name": "WISE 0855-0714",
+ "ra": 133.76783221785826,
+ "dec": -7.242903222222222,
+ "fov_arcmin": 6.0,
+ "frame_shape": [
+  117,
+  117
+ ],
+ "large_shape": [
+  702,
+  702
+ ],
+ "upscale": 6,
+ "shared_scale": true,
+ "stretch": "asinh, 1st-99.95th percentile, shared by all detectors",
+ "png_url_color": "/static/wise-0855-0714/detectors_color.png",
+ "color_channels": {
+  "blue": {
+   "detectors": [
+    1,
+    2
+   ],
+   "wavelength_um": [
+    0.74,
+    1.63
+   ]
+  },
+  "green": {
+   "detectors": [
+    3,
+    4
+   ],
+   "wavelength_um": [
+    1.63,
+    3.83
+   ]
+  },
+  "red": {
+   "detectors": [
+    5,
+    6
+   ],
+   "wavelength_um": [
+    3.81,
+    5.0
+   ]
+  }
+ },
+ "detectors": [
+  {
+   "detector": 1,
+   "n_images": 36,
+   "channel": "blue",
+   "wavelength_range_um": [
+    0.742,
+    1.115
+   ],
+   "png_url": "/static/wise-0855-0714/det1.png",
+   "png_url_native": "/static/wise-0855-0714/det1_native.png"
+  },
+  {
+   "detector": 2,
+   "n_images": 48,
+   "channel": "blue",
+   "wavelength_range_um": [
+    1.096,
+    1.628
+   ],
+   "png_url": "/static/wise-0855-0714/det2.png",
+   "png_url_native": "/static/wise-0855-0714/det2_native.png"
+  },
+  {
+   "detector": 3,
+   "n_images": 44,
+   "channel": "green",
+   "wavelength_range_um": [
+    1.625,
+    2.38
+   ],
+   "png_url": "/static/wise-0855-0714/det3.png",
+   "png_url_native": "/static/wise-0855-0714/det3_native.png"
+  },
+  {
+   "detector": 4,
+   "n_images": 35,
+   "channel": "green",
+   "wavelength_range_um": [
+    2.429,
+    3.832
+   ],
+   "png_url": "/static/wise-0855-0714/det4.png",
+   "png_url_native": "/static/wise-0855-0714/det4_native.png"
+  },
+  {
+   "detector": 5,
+   "n_images": 48,
+   "channel": "red",
+   "wavelength_range_um": [
+    3.815,
+    4.406
+   ],
+   "png_url": "/static/wise-0855-0714/det5.png",
+   "png_url_native": "/static/wise-0855-0714/det5_native.png"
+  },
+  {
+   "detector": 6,
+   "n_images": 45,
+   "channel": "red",
+   "wavelength_range_um": [
+    4.412,
+    5.004
+   ],
+   "png_url": "/static/wise-0855-0714/det6.png",
+   "png_url_native": "/static/wise-0855-0714/det6_native.png"
+  }
+ ]
+}

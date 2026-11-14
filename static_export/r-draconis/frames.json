@@ -10,10 +10,56 @@
   117,
   117
  ],
+ "large_shape": [
+  702,
+  702
+ ],
+ "upscale": 6,
+ "stretch": {
+  "type": "asinh",
+  "black_percentile": 1.0,
+  "white_percentile": 99.95,
+  "shared_across_frames": true
+ },
+ "color_channels": {
+  "blue": {
+   "detectors": [
+    1,
+    2
+   ],
+   "wavelength_um": [
+    0.73,
+    1.65
+   ]
+  },
+  "green": {
+   "detectors": [
+    3,
+    4
+   ],
+   "wavelength_um": [
+    1.62,
+    3.81
+   ]
+  },
+  "red": {
+   "detectors": [
+    5,
+    6
+   ],
+   "wavelength_um": [
+    3.8,
+    4.99
+   ]
+  }
+ },
  "frames": [
   {
    "index": 0,
    "url": "/static/r-draconis/0.png",
+   "png_url_large": "/static/r-draconis/0.png",
+   "png_url_native": "/static/r-draconis/0_native.png",
+   "png_url_color": "/static/r-draconis/0_color.png",
    "mjd_start": 60811.956495321,
    "mjd_end": 60878.608885645,
    "n_images": 153
@@ -21,6 +67,9 @@
   {
    "index": 1,
    "url": "/static/r-draconis/1.png",
+   "png_url_large": "/static/r-draconis/1.png",
+   "png_url_native": "/static/r-draconis/1_native.png",
+   "png_url_color": "/static/r-draconis/1_color.png",
    "mjd_start": 60965.615173886,
    "mjd_end": 61053.415291837,
    "n_images": 210
@@ -28,6 +77,9 @@
   {
    "index": 2,
    "url": "/static/r-draconis/2.png",
+   "png_url_large": "/static/r-draconis/2.png",
+   "png_url_native": "/static/r-draconis/2_native.png",
+   "png_url_color": "/static/r-draconis/2_color.png",
    "mjd_start": 61152.331717948,
    "mjd_end": 61237.873900124,
    "n_images": 172

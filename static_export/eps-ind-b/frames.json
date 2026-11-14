@@ -10,10 +10,56 @@
   117,
   117
  ],
+ "large_shape": [
+  702,
+  702
+ ],
+ "upscale": 6,
+ "stretch": {
+  "type": "asinh",
+  "black_percentile": 1.0,
+  "white_percentile": 99.95,
+  "shared_across_frames": true
+ },
+ "color_channels": {
+  "blue": {
+   "detectors": [
+    1,
+    2
+   ],
+   "wavelength_um": [
+    0.75,
+    1.64
+   ]
+  },
+  "green": {
+   "detectors": [
+    3,
+    4
+   ],
+   "wavelength_um": [
+    1.61,
+    3.78
+   ]
+  },
+  "red": {
+   "detectors": [
+    5,
+    6
+   ],
+   "wavelength_um": [
+    3.81,
+    5.01
+   ]
+  }
+ },
  "frames": [
   {
    "index": 0,
    "url": "/static/eps-ind-b/0.png",
+   "png_url_large": "/static/eps-ind-b/0.png",
+   "png_url_native": "/static/eps-ind-b/0_native.png",
+   "png_url_color": "/static/eps-ind-b/0_color.png",
    "mjd_start": 60789.85618796,
    "mjd_end": 60836.190477821,
    "n_images": 116
@@ -21,6 +67,9 @@
   {
    "index": 1,
    "url": "/static/eps-ind-b/1.png",
+   "png_url_large": "/static/eps-ind-b/1.png",
+   "png_url_native": "/static/eps-ind-b/1_native.png",
+   "png_url_color": "/static/eps-ind-b/1_color.png",
    "mjd_start": 60946.964777416,
    "mjd_end": 60991.858236571,
    "n_images": 146
@@ -28,6 +77,9 @@
   {
    "index": 2,
    "url": "/static/eps-ind-b/2.png",
+   "png_url_large": "/static/eps-ind-b/2.png",
+   "png_url_native": "/static/eps-ind-b/2_native.png",
+   "png_url_color": "/static/eps-ind-b/2_color.png",
    "mjd_start": 61148.845456282,
    "mjd_end": 61164.117615935,
    "n_images": 73
@@ -35,6 +87,9 @@
   {
    "index": 3,
    "url": "/static/eps-ind-b/3.png",
+   "png_url_large": "/static/eps-ind-b/3.png",
+   "png_url_native": "/static/eps-ind-b/3_native.png",
+   "png_url_color": "/static/eps-ind-b/3_color.png",
    "mjd_start": 61305.227572277,
    "mjd_end": 61315.478741768,
    "n_images": 118
