@@ -98,6 +98,20 @@ export function wireDemo(scene) {
         scene.reset();
     });
 
+    // Consume outside gestures before they reach sky picking or other controls.
+    const outsideViewer = event => !viewer.hidden && !viewer.contains(event.target);
+    for (const type of ["pointerdown", "pointerup"]) {
+        document.addEventListener(type, event => {
+            if (outsideViewer(event)) event.stopPropagation();
+        }, true);
+    }
+    document.addEventListener("click", event => {
+        if (!outsideViewer(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        back.click();
+    }, true);
+
     const sharedTarget = new URL(location.href).searchParams.get("target");
     if (sharedTarget) {
         nameInput.value = sharedTarget;

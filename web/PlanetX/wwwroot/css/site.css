@@ -18,7 +18,8 @@
     --shadow: 0 18px 50px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
     --ease: cubic-bezier(0.22, 1, 0.36, 1);
     --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-    --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --science-font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --sans: var(--mono);
     color-scheme: dark;
 }
 
@@ -157,6 +158,11 @@ body.is-flying .target-menu, body.is-flying .explorer-heading, body.is-flying .o
 }
 
 /* ---------- Supernova intro (js/scene/intro.js) and sound (js/scene/audio.js) ---------- */
+/* Keep the opening screen and captions in their original sans-serif face. */
+.intro-gate, .intro-caption {
+    --sans: var(--science-font);
+    font-family: var(--sans);
+}
 .intro-caption {
     position: fixed; left: 50%; bottom: 13.5vh; z-index: 4; margin: 0;
     max-width: min(760px, calc(100% - 48px)); transform: translate(-50%, 10px);
@@ -214,8 +220,7 @@ body.is-gated .target-menu, body.is-gated .sound-toggle { z-index: 7; }
 }
 @keyframes gate-breathe { 50% { opacity: 0.55; } }
 body.in-intro .explorer-heading { opacity: 0; }
-body.in-intro .target-menu { opacity: 0.28; }
-body.in-intro .target-menu:hover, body.in-intro .target-menu:focus-within { opacity: 1; }
+body.in-intro .target-menu { display: none; }
 @media (max-width: 640px) { .intro-caption { bottom: 24vh; } }
 @media (prefers-reduced-motion: reduce) { .intro-gate strong { animation: none; } }
 
@@ -318,3 +323,37 @@ body.in-intro .target-menu:hover, body.in-intro .target-menu:focus-within { opac
 .observation-viewer button:focus-visible, #frame-container:focus-visible { outline-color:var(--accent); }
 #share-view:hover { border-color:var(--warm); color:var(--warm); }
 @media (prefers-reduced-motion: reduce) { .observation-viewer, .observation-viewer[hidden] { transition:none; transform:none; } }
+
+/* Use the original Targets button face; keep chart axes and legends unchanged.
+   Existing component rules retain their original capitalization. */
+#spectrum-chart text, .spectrum-legend {
+    font-family: var(--science-font);
+}
+.observation-info h2 { overflow-wrap: anywhere; }
+.field-label { font-size:11px; letter-spacing:.06em; color:var(--ink-dim); }
+.search-mode-options { display:flex; }
+.search-mode-options button { flex:1; padding:10px 8px; }
+#name-fields > label { margin-bottom:8px; }
+.target-options { margin-top:6px; border:1px solid var(--line-strong); border-radius:var(--radius-sm); padding:4px; background:var(--glass-strong); max-height:210px; overflow-y:auto; }
+.target-options [role="option"] { padding:9px 10px; border-radius:5px; font-size:12px; letter-spacing:.04em; cursor:pointer; }
+.target-options [role="option"]:hover, .target-options [aria-selected="true"] { background:rgba(143,211,255,.15); color:var(--accent); }
+.target-no-matches { font-size:11px; line-height:1.5; color:var(--ink-dim); margin:8px 0 0; }
+/* Size each group to its content so Display follows the middle controls. */
+.observation-controls, .observation-controls:not([data-kind="epoch"]) {
+    display:flex; flex-wrap:wrap; justify-content:flex-start; align-items:center;
+}
+.image-type-control, .display-options { flex:0 0 auto; }
+.observation-controls > .image-selection { flex:0 1 auto; max-width:100%; }
+.observation-controls[data-kind="band"] > .image-selection { flex:1 1 0; }
+.wavelength-selection-row { flex-wrap:nowrap; }
+#band-range { flex:0 0 auto; white-space:nowrap; }
+.display-options, .display-appearance { text-align:left; justify-content:flex-start; }
+.time-heading { flex-wrap:wrap; height:auto; min-height:28px; }
+@media(max-width:520px) {
+    .observation-controls > * { flex-basis:100%; }
+}
+.observation-viewer { grid-template-rows:minmax(0,1fr) auto; }
+#observation-date { white-space:nowrap; }
+@media(max-width:760px), (max-height:620px) {
+    .observation-viewer { grid-template-rows:minmax(340px,1fr) auto; }
+}

@@ -10,19 +10,25 @@
         <h1>SPHEREx Explorer</h1>
     </header>
 
-    <aside class="target-menu" aria-label="Target selection">
+    <aside class="target-menu" aria-label="Target selection" hidden>
         <div id="target-panel" class="ui-panel" hidden>
             <h2>Find a target</h2>
             <form id="target-form">
-                <label for="search-mode">Search by</label>
-                <select id="search-mode">
-                    <option value="name">Target name</option>
-                    <option value="coordinates">RA / Dec</option>
-                </select>
+                <div id="search-mode-label" class="field-label">Search by</div>
+                <input id="search-mode" type="hidden" value="name" />
+                <div class="search-mode-options segmented-selector" role="group" aria-labelledby="search-mode-label">
+                    <button type="button" data-search-mode="name" aria-pressed="true">Target name</button>
+                    <button type="button" data-search-mode="coordinates" aria-pressed="false">RA / Dec</button>
+                </div>
 
                 <div id="name-fields">
                     <label for="target-name">Target name</label>
-                    <input id="target-name" name="name" placeholder="Barnard's Star" required />
+                    <div class="target-combobox">
+                        <input id="target-name" name="name" placeholder="Search targets" required autocomplete="off"
+                               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="target-options" />
+                        <div id="target-options" class="target-options" role="listbox" aria-label="Cached targets" hidden></div>
+                        <p id="target-no-matches" class="target-no-matches" hidden>No cached match. Explore to search this name.</p>
+                    </div>
                 </div>
 
                 <fieldset id="coordinate-fields" hidden disabled>
@@ -33,9 +39,6 @@
                     <input id="dec" name="dec" type="number" min="-90" max="90" step="any" required />
                 </fieldset>
 
-                <label for="fov">Field of view (arcmin)</label>
-                @* Provisional unit; confirm with the data API before integration. *@
-                <input id="fov" name="fov" type="number" min="0.1" step="any" value="10" required />
                 <button type="submit">Explore</button>
             </form>
         </div>
@@ -127,6 +130,6 @@
 <div id="viewer-container"></div>
 
 @section Scripts {
-    <script src="~/js/ui.js" asp-append-version="true"></script>
+    <script type="module" src="~/js/ui.js" asp-append-version="true"></script>
     <script type="module" src="~/js/space.js" asp-append-version="true"></script>
 }
