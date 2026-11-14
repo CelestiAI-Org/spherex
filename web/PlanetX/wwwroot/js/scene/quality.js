@@ -29,6 +29,7 @@ export function readParams() {
     return {
         forced: TIERS[q] ? q : null,
         fps: params.has("fps"),
+        debug: params.has("debug"),
     };
 }
 

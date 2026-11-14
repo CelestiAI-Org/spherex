@@ -11,7 +11,7 @@ const Y = [1.0, 0.82, 0.58];      // old-star core gold
 
 const NAMED = [
     // Hero spiral: fictional placement so it sits in the opening shot.
-    { ra: 243, dec: 3, dist: 800, radius: 125, type: SPIRAL, arms: 2, wind: 2.6, incl: 52, pa: 30, bright: 1.0, core: Y, arm: W, hero: true },
+    { ra: 219, dec: 5, dist: 800, radius: 125, type: SPIRAL, arms: 2, wind: 2.6, incl: 52, pa: 30, bright: 1.0, core: Y, arm: W, hero: true },
     { ra: 10.68, dec: 41.27, dist: 900, radius: 120, type: SPIRAL, arms: 2, wind: 2.2, incl: 74, pa: 38, bright: 0.85, core: Y, arm: [0.7, 0.78, 1.0] },   // Andromeda
     { ra: 23.46, dec: 30.66, dist: 900, radius: 42, type: SPIRAL, arms: 2, wind: 1.8, incl: 50, pa: 20, bright: 0.6, core: [0.9, 0.85, 0.8], arm: W },  // Triangulum
     { ra: 202.47, dec: 47.2, dist: 1000, radius: 34, type: SPIRAL, arms: 2, wind: 2.8, incl: 20, pa: 0, bright: 0.8, core: Y, arm: W },                // Whirlpool

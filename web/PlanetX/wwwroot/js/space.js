@@ -6,6 +6,7 @@ import { createSky } from "./scene/sky.js";
 import { createStars } from "./scene/stars.js";
 import { createGalaxies } from "./scene/galaxies.js";
 import { createNebulae } from "./scene/nebulae.js";
+import { createBlackHole } from "./scene/blackhole.js";
 import { createNoiseTexture } from "./scene/noise.js";
 import { Post } from "./scene/post.js";
 import { CameraRig } from "./scene/camera.js";
@@ -23,8 +24,8 @@ Object.assign(document.documentElement.style, { width: "100%", height: "100%", m
 Object.assign(document.body.style, { width: "100%", height: "100%", margin: "0", overflow: "hidden", background: "#02030b" });
 Object.assign(container.style, { position: "fixed", inset: "0", width: "100vw", height: "100vh", zIndex: "0", overflow: "hidden" });
 
-// Opening shot: looking toward the galactic centre region, with the hero galaxy upper right.
-const HOME = { ra: 258, dec: -12, fov: 60 };
+// Opening shot: black hole low centre against open sky, Milky Way down the left, hero galaxy upper right.
+const HOME = { ra: 240, dec: -15, fov: 60 };
 
 const params = readParams();
 const pickHandlers = new Set();
@@ -76,6 +77,8 @@ function createSpaceScene(renderer) {
         uTime: { value: 0 },
         uPxScale: { value: 1 },
         uTwinkle: { value: 1 },
+        uBhDir: { value: new THREE.Vector3(0, 0, -1) },
+        uBhCull: { value: 2 },
     };
     const noise = createNoiseTexture(256);
     const sky = createSky(renderer, tier.cubeSize);
@@ -85,7 +88,10 @@ function createSpaceScene(renderer) {
     const stars = createStars(shared);
     const galaxies = createGalaxies({ uniforms: shared, noise });
     const nebulae = createNebulae({ uniforms: shared, noise });
-    world.add(stars.group, galaxies.group, nebulae.group);
+    const blackHole = createBlackHole({ skyTexture: sky.texture, noise });
+    shared.uBhDir.value.copy(blackHole.position).normalize();
+    shared.uBhCull.value = Math.cos(3.4 * DEG);
+    world.add(blackHole.mesh, stars.group, galaxies.group, nebulae.group);
 
     const post = new Post(renderer, tier);
     const rig = new CameraRig(camera, canvas, { yaw: HOME.ra * DEG, pitch: HOME.dec * DEG, fov: HOME.fov });
@@ -95,6 +101,7 @@ function createSpaceScene(renderer) {
         stars.setTier(tier);
         galaxies.setTier(tier);
         nebulae.setTier(tier);
+        blackHole.setTier(tier);
         post.setTier(tier);
         resize();
     }
@@ -164,6 +171,7 @@ function createSpaceScene(renderer) {
         shared.uTime.value = time;
         rig.update(dt, time);
         galaxies.update(time);
+        blackHole.update(time, camera, post.height);
 
         state.exposure = damp(state.exposure, state.exposureTarget, 0.9, dt);
         const u = post.uniforms;
@@ -186,8 +194,12 @@ function createSpaceScene(renderer) {
         pickHandlers.forEach(fn => fn({ x, y }));
     });
 
+    // Tuning handle for development only: window.spherexScene.debug with ?debug in the URL.
+    const debug = params.debug ? { post, blackHole, rig, state, world } : undefined;
+
     return {
         ready,
+        debug,
         get quality() { return tier.name; },
         // Turn toward a sky position. target: { ra, dec } in degrees.
         async flyTo(target, { minDuration = 2.2 } = {}) {

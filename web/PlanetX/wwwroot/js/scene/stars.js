@@ -36,6 +36,8 @@ const pointVertex = /* glsl */ `
 attribute vec3 color;
 attribute vec3 star;          // x: size (px at 1080p), y: brightness, z: twinkle phase
 uniform float uTime, uPxScale, uTwinkle, uBoost;
+uniform vec3 uBhDir;
+uniform float uBhCull;
 varying vec3 vColor;
 varying float vBright;
 void main() {
@@ -48,6 +50,7 @@ void main() {
     float size = star.x * uPxScale * nearBoost;
     float drawn = max(size, 2.0);
     gl_PointSize = drawn;
+    if (dot(normalize(position - cameraPosition), uBhDir) > uBhCull) gl_PointSize = 0.0;
     // Keep total light constant when a tiny star is drawn larger than its true size.
     vBright = star.y * tw * uBoost * (size * size) / (drawn * drawn) * 2.4 / (1.0 + size * 0.1);
     vColor = color;

@@ -180,7 +180,7 @@ export class Post {
         this.composite = mat(compositeFragment, {
             tScene: { value: null }, tBloom: { value: null }, tFlare: { value: null }, tStreak: { value: null },
             uResolution: { value: new THREE.Vector2(1, 1) }, uStreakTexel: { value: new THREE.Vector2() },
-            uTime: { value: 0 }, uExposure: { value: 1 }, uBloom: { value: 0.8 }, uFlare: { value: 0.35 },
+            uTime: { value: 0 }, uExposure: { value: 1 }, uBloom: { value: 0.5 }, uFlare: { value: 0.35 },
             uStreak: { value: 0.12 }, uCA: { value: 1 }, uGrain: { value: 0.035 }, uVignette: { value: 0.55 },
             uFade: { value: 1 }, uDesaturate: { value: 0 }, uZoomBlur: { value: 0 }, uWarm: { value: 0 },
             uFlash: { value: 0 }, uZoomCenter: { value: new THREE.Vector2(0.5, 0.5) },
@@ -243,7 +243,8 @@ export class Post {
         for (let i = this.levels - 1; i > 0; i--) {
             this.up.uniforms.tSrc.value = this.mips[i].texture;
             this.up.uniforms.uTexel.value.set(1 / this.mips[i].width, 1 / this.mips[i].height);
-            this.up.uniforms.uWeight.value = i > 3 ? 0.85 : 1.0;
+            // Wide levels are kept faint so glow stays local and dark areas stay dark.
+            this.up.uniforms.uWeight.value = i >= 3 ? 0.55 : i === 2 ? 0.8 : 1.0;
             this.pass.render(r, this.mips[i - 1], this.up);
         }
         r.autoClear = true;
