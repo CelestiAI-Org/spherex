@@ -1,0 +1,120 @@
+{
+ "target": "eps-ind-b",
+ "name": "Epsilon Indi B",
+ "ra": 331.0966472578766,
+ "dec": -56.800656008888886,
+ "fov_arcmin": 15.0,
+ "frame_shape": [
+  293,
+  293
+ ],
+ "large_shape": [
+  1024,
+  1024
+ ],
+ "upscale": 3.495,
+ "image_format": "webp",
+ "shared_scale": true,
+ "stretch": "asinh, 1st-99.95th percentile, shared by all detectors",
+ "png_url_color": "/static/eps-ind-b/detectors_color.webp",
+ "color_channels": {
+  "blue": {
+   "detectors": [
+    1,
+    2
+   ],
+   "wavelength_um": [
+    0.75,
+    1.64
+   ]
+  },
+  "green": {
+   "detectors": [
+    3,
+    4
+   ],
+   "wavelength_um": [
+    1.61,
+    3.78
+   ]
+  },
+  "red": {
+   "detectors": [
+    5,
+    6
+   ],
+   "wavelength_um": [
+    3.81,
+    5.01
+   ]
+  }
+ },
+ "detectors": [
+  {
+   "detector": 1,
+   "n_images": 45,
+   "channel": "blue",
+   "wavelength_range_um": [
+    0.748,
+    1.103
+   ],
+   "png_url": "/static/eps-ind-b/det1.webp",
+   "png_url_native": "/static/eps-ind-b/det1_native.webp"
+  },
+  {
+   "detector": 2,
+   "n_images": 93,
+   "channel": "blue",
+   "wavelength_range_um": [
+    1.088,
+    1.644
+   ],
+   "png_url": "/static/eps-ind-b/det2.webp",
+   "png_url_native": "/static/eps-ind-b/det2_native.webp"
+  },
+  {
+   "detector": 3,
+   "n_images": 94,
+   "channel": "green",
+   "wavelength_range_um": [
+    1.612,
+    2.396
+   ],
+   "png_url": "/static/eps-ind-b/det3.webp",
+   "png_url_native": "/static/eps-ind-b/det3_native.webp"
+  },
+  {
+   "detector": 4,
+   "n_images": 44,
+   "channel": "green",
+   "wavelength_range_um": [
+    2.443,
+    3.78
+   ],
+   "png_url": "/static/eps-ind-b/det4.webp",
+   "png_url_native": "/static/eps-ind-b/det4_native.webp"
+  },
+  {
+   "detector": 5,
+   "n_images": 84,
+   "channel": "red",
+   "wavelength_range_um": [
+    3.806,
+    4.417
+   ],
+   "png_url": "/static/eps-ind-b/det5.webp",
+   "png_url_native": "/static/eps-ind-b/det5_native.webp"
+  },
+  {
+   "detector": 6,
+   "n_images": 93,
+   "channel": "red",
+   "wavelength_range_um": [
+    4.401,
+    5.011
+   ],
+   "png_url": "/static/eps-ind-b/det6.webp",
+   "png_url_native": "/static/eps-ind-b/det6_native.webp"
+  }
+ ]
+}

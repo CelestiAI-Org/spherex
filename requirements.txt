@@ -1,0 +1,10 @@
+numpy
+astropy
+reproject
+pyvo
+fastapi
+uvicorn[standard]
+pillow
+requests
+httpx
+pytest
