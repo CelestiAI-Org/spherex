@@ -28,9 +28,7 @@
             name.reportValidity();
             return;
         }
-        // API and scene integration will be added here later.
-        status.textContent = 'Target input ready. Observation loading is not connected yet.';
-        status.hidden = false;
+
     });
     name.addEventListener('input', () => name.setCustomValidity(''));
     document.getElementById('back-to-sky').addEventListener('click', () => {

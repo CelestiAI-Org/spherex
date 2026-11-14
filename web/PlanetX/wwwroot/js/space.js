@@ -1,443 +1,322 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js";
+// SPHEREx Explorer sky scene: entry point.
+// Builds the scene, runs the render loop, and exposes `scene` (also window.spherexScene),
+// the integration surface for the UI and data code:
+//
+//   scene.ready                      Promise, resolves once the sky is baked and visible.
+//   scene.flyTo(target, { minDuration = 3.2 })
+//        target: { ra, dec } in degrees, or a Promise of one (e.g. a name lookup).
+//        Starts the warm zoom and resolves after minDuration seconds; the warp keeps
+//        cruising until finish() so slow API calls are hidden.
+//   scene.finish() / scene.showFrames()
+//        Decelerate, arrival flash, dim the sky for the data panels. Resolves on arrival.
+//   scene.reset()                    Fade back to the opening view.
+//   scene.onPick(fn)                 fn({ key, name, ra, dec }) when a target beacon is clicked.
+//                                    Returns an unsubscribe function.
+//   scene.quality / scene.setQuality("low" | "medium" | "high")
+//
+// Typical use:
+//   await Promise.all([scene.flyTo(target), api.getFrames(key)]);
+//   await scene.finish();   // then show the data view
+import * as THREE from "./scene/three.js";
+import { createSky } from "./scene/sky.js";
+import { createStars } from "./scene/stars.js";
+import { createGalaxies } from "./scene/galaxies.js";
+import { createNebulae } from "./scene/nebulae.js";
+import { createBlackHole } from "./scene/blackhole.js";
+import { createDebris } from "./scene/asteroids.js";
+import { createWarpStreaks, createBeacons } from "./scene/warp.js";
+import { createTargetLayer } from "./scene/targets.js";
+import { Flight } from "./scene/flight.js";
+import { wireDemo } from "./scene/wiring.js";
+import { createIntro } from "./scene/intro.js";
+import { createSound } from "./scene/audio.js";
+import { createNoiseTexture } from "./scene/noise.js";
+import { Post } from "./scene/post.js";
+import { CameraRig } from "./scene/camera.js";
+import { TIERS, ORDER, readParams, detectTier, PerformanceGovernor } from "./scene/quality.js";
+import { startFallback } from "./scene/fallback.js";
+import { DEG, damp, radec, sleep } from "./scene/util.js";
 
-const container = document.getElementById("viewer-container");
-
+const container = document.getElementById("sky-scene");
 if (!container) {
-    throw new Error('Could not find the element with id "viewer-container".');
+    throw new Error('Could not find the element with id "sky-scene".');
 }
 
 // Make the viewer a full-page background.
-Object.assign(document.documentElement.style, {
-    width: "100%",
-    height: "100%",
-    margin: "0",
-});
+Object.assign(document.documentElement.style, { width: "100%", height: "100%", margin: "0" });
+Object.assign(document.body.style, { width: "100%", height: "100%", margin: "0", overflow: "hidden", background: "#02030b" });
+Object.assign(container.style, { position: "fixed", inset: "0", width: "100vw", height: "100vh", zIndex: "0", overflow: "hidden" });
 
-Object.assign(document.body.style, {
-    width: "100%",
-    height: "100%",
-    margin: "0",
-    overflow: "hidden",
-    background: "#02030b",
-});
+// Opening shot: black hole low centre against open sky, Milky Way down the left, hero galaxy upper right.
+const HOME = { ra: 245, dec: -27.5, fov: 60 };
+// Intro: a lower, tighter hero angle on the black hole that eases out to HOME.
+const INTRO = { ra: 239, dec: -32, fov: 40, duration: 9 };
 
-Object.assign(container.style, {
-    position: "fixed",
-    inset: "0",
-    width: "100vw",
-    height: "100vh",
-    zIndex: "0",
-    overflow: "hidden",
-});
+const params = readParams();
+const pickHandlers = new Set();
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x02030b);
-
-const camera = new THREE.PerspectiveCamera(
-    70,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    2000
-);
-camera.position.set(0, 0, 0);
-
-const renderer = new THREE.WebGLRenderer({
-    antialias: true,
-    alpha: false,
-});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-container.appendChild(renderer.domElement);
-
-const canvas = renderer.domElement;
-Object.assign(canvas.style, {
-    display: "block",
-    width: "100%",
-    height: "100%",
-    cursor: "grab",
-    touchAction: "none",
-});
-
-// Keep foreground UI above the scene, for example:
-// <div class="ui-layer">Your page content</div>
-const style = document.createElement("style");
-style.textContent = `
-  .ui-layer {
-    position: relative;
-    z-index: 1;
-  }
-`;
-document.head.appendChild(style);
-
-// Seeded random generator keeps the scene stable between reloads.
-let seed = 123456;
-function random() {
-    seed = (seed * 1664525 + 1013904223) % 4294967296;
-    return seed / 4294967296;
+function createRenderer() {
+    try {
+        const probe = document.createElement("canvas").getContext("webgl2");
+        if (!probe) return null;
+        const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: "high-performance", stencil: false });
+        return renderer.capabilities.isWebGL2 ? renderer : null;
+    } catch (error) {
+        console.warn("WebGL unavailable, using the 2D fallback sky.", error);
+        return null;
+    }
 }
 
-function makeGalaxy({
-    position,
-    color = 0x9caeff,
-    count = 12000,
-    radius = 10,
-    arms = 4,
-    tilt = 0,
-    size = 0.09,
-}) {
-    const positions = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-    const baseColor = new THREE.Color(color);
+const renderer = createRenderer();
+export const scene = renderer ? createSpaceScene(renderer) : createFallbackScene();
+window.spherexScene = scene;
+if (new URLSearchParams(location.search).get("wiring") !== "off") wireDemo(scene);
 
-    for (let i = 0; i < count; i++) {
-        const arm = i % arms;
-        const r = Math.pow(random(), 0.65) * radius;
-        const armAngle =
-            (arm / arms) * Math.PI * 2 + r * 0.48 + (random() - 0.5) * 0.55;
-        const spread = (random() - 0.5) * (0.3 + r * 0.08);
+function createFallbackScene() {
+    startFallback(container);
+    return {
+        ready: Promise.resolve(),
+        quality: "fallback",
+        async flyTo(target, { minDuration = 3.2 } = {}) { await Promise.all([target, sleep(minDuration * 1000)]); return true; },
+        async finish() { return true; },
+        async showFrames() { return true; },
+        async reset() { return true; },
+        onPick(fn) { pickHandlers.add(fn); return () => pickHandlers.delete(fn); },
+        setQuality() {},
+    };
+}
 
-        const x = Math.cos(armAngle) * r + spread;
-        const y = Math.sin(armAngle) * r * 0.48 + spread * 0.45;
-        const z = (random() - 0.5) * (0.3 + r * 0.06);
+function createSpaceScene(renderer) {
+    renderer.autoClear = true;
+    renderer.toneMapping = THREE.NoToneMapping;
+    container.appendChild(renderer.domElement);
+    const canvas = renderer.domElement;
+    Object.assign(canvas.style, { display: "block", width: "100%", height: "100%", cursor: "grab", touchAction: "none" });
 
-        positions[i * 3] = x;
-        positions[i * 3 + 1] = y;
-        positions[i * 3 + 2] = z;
+    const detected = detectTier(renderer);
+    let tier = TIERS[params.forced || detected.tier];
+    let scale = 1;              // overall render resolution (last resort of the governor)
+    let bhScale = tier.bhScale; // black hole buffer resolution
+    let dataMode = false;
+    let intro = null, sound = null;
+    let lost = false;
 
-        const brightness = 0.45 + random() * 0.8;
-        colors[i * 3] = baseColor.r * brightness;
-        colors[i * 3 + 1] = baseColor.g * brightness;
-        colors[i * 3 + 2] = baseColor.b * brightness;
+    const world = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(HOME.fov, innerWidth / innerHeight, 0.1, 8000);
+    const shared = {
+        uTime: { value: 0 },
+        uPxScale: { value: 1 },
+        uTwinkle: { value: 1 },
+        uBhPos: { value: new THREE.Vector3(0, 0, -1) },
+        uBhCone: { value: new THREE.Vector2(2, 2) },
+    };
+    const noise = createNoiseTexture(256);
+    const sky = createSky(renderer, tier.cubeSize);
+    world.background = sky.texture;
+    world.backgroundIntensity = 1;
+
+    const stars = createStars(shared);
+    const galaxies = createGalaxies({ uniforms: shared, noise });
+    const nebulae = createNebulae({ uniforms: shared, noise });
+    const blackHole = createBlackHole({ renderer, skyTexture: sky.texture, noise });
+    shared.uBhPos.value.copy(blackHole.position);
+    shared.uBhCone.value.set(Math.cos(blackHole.lensRadius * 0.75), Math.cos(blackHole.lensRadius * 1.15));
+    const debris = createDebris({ uniforms: shared, lightDir: blackHole.position.clone().normalize(), home: radec(HOME.ra, HOME.dec) });
+    const streaks = createWarpStreaks();
+    const beacons = createBeacons(shared);
+    world.add(blackHole.mesh, stars.group, galaxies.group, nebulae.group, debris.group, beacons.object, streaks.object);
+
+    const post = new Post(renderer, tier);
+    const rig = new CameraRig(camera, canvas, { yaw: HOME.ra * DEG, pitch: HOME.dec * DEG, fov: HOME.fov });
+    const targets = createTargetLayer({ beacons, camera });
+
+    function applyTier(next, { keepBhScale = false } = {}) {
+        tier = next;
+        bhScale = keepBhScale ? Math.min(bhScale, tier.bhScale) : tier.bhScale;
+        blackHole.setResolutionScale(bhScale);
+        stars.setTier(tier);
+        galaxies.setTier(tier);
+        nebulae.setTier(tier);
+        blackHole.setTier(tier);
+        debris.setTier(tier);
+        post.setTier(tier);
+        intro?.setTier(tier);
+        sound?.setTier(tier.name === "low");
+        resize();
     }
+    function resize() {
+        // Behind the data panels the sky renders at 80 % resolution to leave GPU time for the UI.
+        const ratio = Math.min(devicePixelRatio || 1, tier.pixelRatio) * scale * (dataMode ? 0.8 : 1);
+        renderer.setPixelRatio(ratio);
+        renderer.setSize(innerWidth, innerHeight, false);
+        const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+        post.setSize(size.x, size.y);
+        blackHole.setSize(size.x, size.y);
+        shared.uPxScale.value = size.y / 1080;
+        camera.aspect = innerWidth / innerHeight;
+        rig.fovMul = camera.aspect < 1 ? Math.min(1.5, Math.pow(1 / camera.aspect, 0.45)) : 1;
+        camera.updateProjectionMatrix();
+    }
+    addEventListener("resize", resize);
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    // One step cheaper each time the frame rate stays low: black hole resolution first (it is
+    // the most expensive pass), then a whole tier, then the overall render resolution.
+    function degrade() {
+        if (bhScale > tier.bhScaleMin + 0.01) {
+            bhScale = Math.max(tier.bhScaleMin, Math.round((bhScale - 0.125) * 1000) / 1000);
+            blackHole.setResolutionScale(bhScale);
+            return `black hole ×${bhScale.toFixed(2)}`;
+        }
+        const index = ORDER.indexOf(tier.name);
+        if (index > 0) {
+            applyTier(TIERS[ORDER[index - 1]], { keepBhScale: true });
+            return `tier → ${tier.name}`;
+        }
+        if (scale > 0.71) {
+            scale = Math.round((scale - 0.15) * 100) / 100;
+            resize();
+            return `render ×${scale.toFixed(2)}`;
+        }
+        return null;
+    }
+    const governor = new PerformanceGovernor({ locked: Boolean(params.forced), onDegrade: degrade });
 
-    const material = new THREE.PointsMaterial({
-        size,
-        vertexColors: true,
-        transparent: true,
-        opacity: 0.9,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        sizeAttenuation: true,
+    // --- FPS overlay: Shift+F toggles it, or start with ?fps in the URL.
+    const hud = document.createElement("div");
+    Object.assign(hud.style, {
+        position: "fixed", top: "8px", right: "8px", zIndex: "50", padding: "4px 8px",
+        font: "11px/1.4 ui-monospace, monospace", color: "#9fe8ff", background: "rgba(0,8,20,0.6)",
+        border: "1px solid rgba(120,200,255,0.25)", borderRadius: "6px", pointerEvents: "none",
+        display: params.fps ? "block" : "none", whiteSpace: "pre",
+    });
+    document.body.appendChild(hud);
+    addEventListener("keydown", e => {
+        if (e.shiftKey && (e.key === "F" || e.key === "f") && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName)) {
+            hud.style.display = hud.style.display === "none" ? "block" : "none";
+        }
     });
 
-    const galaxy = new THREE.Points(geometry, material);
-    galaxy.position.set(...position);
-    galaxy.rotation.x = tilt;
-    scene.add(galaxy);
-    return galaxy;
-}
+    // --- Scene state.
+    const state = {
+        exposure: 0,          // animated toward exposureTarget at exposureRate
+        exposureTarget: 1.0,
+        exposureRate: 0.9,
+        desaturate: 0,
+        desaturateTarget: 0,
+        baked: false,
+    };
+    const flight = new Flight({ rig, state, post, streaks, targets, home: HOME });
+    flight.reducedMotion = params.reducedMotion;
+    sound = createSound({ reduced: params.reducedMotion, debug: params.debug });
+    sound.setTier(tier.name === "low");
+    intro = createIntro({ world, rig, state, post, blackHole, debris, flight, shared, noise, home: HOME, params, sound });
+    intro.setTier(tier);
+    if (params.reducedMotion) rig.swayAmplitude *= 0.4;
 
-function makeNebula(position, color, count = 7000, spread = 14) {
-    const positions = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-    const baseColor = new THREE.Color(color);
+    // If the GPU drops the context (driver reset, too many tabs), swap to the 2D sky.
+    canvas.addEventListener("webglcontextlost", event => {
+        event.preventDefault();
+        lost = true;
+        canvas.remove();
+        hud.remove();
+        startFallback(container);
+    });
+    let resolveReady;
+    const ready = new Promise(resolve => { resolveReady = resolve; });
 
-    for (let i = 0; i < count; i++) {
-        // Concentrate points toward the center to create a soft cloud.
-        const angle = random() * Math.PI * 2;
-        const r = Math.sqrt(random()) * spread;
-        const x = Math.cos(angle) * r;
-        const y = Math.sin(angle) * r * 0.7;
-        const z = (random() - 0.5) * spread * 0.55;
+    applyTier(tier);
 
-        positions[i * 3] = x;
-        positions[i * 3 + 1] = y;
-        positions[i * 3 + 2] = z;
+    let last = performance.now();
+    let time = 0;
+    let hudTimer = 0;
+    function frame(now) {
+        if (lost) return;
+        requestAnimationFrame(frame);
+        const dt = Math.min((now - last) / 1000, 0.1);
+        last = now;
 
-        const brightness = 0.25 + random() * 0.55;
-        colors[i * 3] = baseColor.r * brightness;
-        colors[i * 3 + 1] = baseColor.g * brightness;
-        colors[i * 3 + 2] = baseColor.b * brightness;
+        // Bake the sky one cube face per frame before showing anything.
+        if (!state.baked) {
+            state.baked = sky.bakeStep();
+            if (!state.baked) return;
+            resolveReady();
+            if (intro.shouldPlay) {
+                intro.start();
+            } else {
+            // Opening shot: start on the hero angle and drift out to the home view while fading in.
+            rig.yaw = INTRO.ra * DEG;
+            rig.pitch = INTRO.dec * DEG;
+            rig.fov = rig.fovTarget = INTRO.fov;
+            rig.animateTo({ yaw: HOME.ra * DEG, pitch: HOME.dec * DEG, fov: HOME.fov, duration: INTRO.duration, easing: t => 1 - Math.pow(1 - t, 2.4) });
+            }
+        }
+
+        time += dt;
+        shared.uTime.value = time;
+        rig.update(dt, time);
+        flight.update(dt);
+        intro.update(dt);
+        if ((flight.phase === "data") !== dataMode) {
+            dataMode = flight.phase === "data";
+            resize();
+        }
+        galaxies.update(time);
+        debris.update(time, flight.speed, intro.active ? intro.shockTest : null, dt);
+        targets.update(flight.labelsVisible && !intro.active);
+
+        state.exposure = damp(state.exposure, state.exposureTarget, state.exposureRate, dt);
+        state.desaturate = damp(state.desaturate, state.desaturateTarget, 1.5, dt);
+        const u = post.uniforms;
+        u.uExposure.value = state.exposure;
+        u.uDesaturate.value = state.desaturate;
+
+        camera.updateMatrixWorld();
+        blackHole.render(time, camera, dt);
+        post.render(world, camera, time);
+        governor.update(dt);
+
+        if (hud.style.display !== "none" && (hudTimer -= dt) <= 0) {
+            hudTimer = 0.5;
+            const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+            const hole = blackHole.bufferSize;
+            hud.textContent = [
+                `${governor.fps.toFixed(0)} fps · ${tier.name}${params.forced ? " (locked)" : " (auto)"}`,
+                `render ${size.x}×${size.y} ×${scale.toFixed(2)}`,
+                `black hole ×${bhScale.toFixed(2)} ${hole.x}×${hole.y} · ${tier.bhSteps} steps · ${tier.bhOctaves} oct${blackHole.mesh.visible ? "" : " (off screen)"}`,
+                governor.lastAction ? `last step down: ${governor.lastAction}` : "",
+                detected.gpu.slice(0, 44),
+            ].filter(Boolean).join("\n");
+        }
     }
+    requestAnimationFrame(frame);
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-
-    const cloud = new THREE.Points(
-        geometry,
-        new THREE.PointsMaterial({
-            size: 0.24,
-            vertexColors: true,
-            transparent: true,
-            opacity: 0.22,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-            sizeAttenuation: true,
-        })
-    );
-
-    cloud.position.set(...position);
-    scene.add(cloud);
-    return cloud;
-}
-
-function makeBlackHole(position) {
-    const group = new THREE.Group();
-    group.position.set(...position);
-
-    const darkCore = new THREE.Mesh(
-        new THREE.SphereGeometry(2.1, 32, 32),
-        new THREE.MeshBasicMaterial({ color: 0x000000 })
-    );
-    group.add(darkCore);
-
-    const disk = new THREE.Mesh(
-        new THREE.TorusGeometry(3.2, 0.55, 12, 96),
-        new THREE.MeshBasicMaterial({
-            color: 0xff8a45,
-            transparent: true,
-            opacity: 0.78,
-            blending: THREE.AdditiveBlending,
-        })
-    );
-    disk.rotation.x = Math.PI / 2.5;
-    group.add(disk);
-
-    const glow = new THREE.Mesh(
-        new THREE.TorusGeometry(2.55, 0.13, 8, 96),
-        new THREE.MeshBasicMaterial({
-            color: 0xffd49a,
-            transparent: true,
-            opacity: 0.75,
-            blending: THREE.AdditiveBlending,
-        })
-    );
-    glow.rotation.x = Math.PI / 2.5;
-    group.add(glow);
-
-    scene.add(group);
-    return group;
-}
-
-// Place the objects around the origin, mostly in front of the initial view.
-const milkyWay = makeGalaxy({
-    position: [-18, 8, -58],
-    color: 0xa8c2ff,
-    count: 18000,
-    radius: 13,
-    arms: 5,
-    tilt: 0.32,
-    size: 0.085,
-});
-
-const andromeda = makeGalaxy({
-    position: [31, -10, -92],
-    color: 0xffc6a2,
-    count: 14000,
-    radius: 11,
-    arms: 4,
-    tilt: -0.55,
-    size: 0.09,
-});
-
-const nebulae = [
-    makeNebula([12, 16, -42], 0x613fff, 6000, 12),
-    makeNebula([-35, -13, -76], 0x159dff, 7000, 16),
-    makeNebula([42, 18, -125], 0xff3f8f, 6500, 18),
-];
-
-const blackHole = makeBlackHole([5, -5, -38]);
-
-// Distant stars.
-const starCount = 9000;
-const starPositions = new Float32Array(starCount * 3);
-
-for (let i = 0; i < starCount; i++) {
-    const distance = 120 + random() * 900;
-    const theta = random() * Math.PI * 2;
-    const vertical = random() * 2 - 1;
-    const horizontal = Math.sqrt(1 - vertical * vertical);
-
-    starPositions[i * 3] = distance * horizontal * Math.cos(theta);
-    starPositions[i * 3 + 1] = distance * vertical;
-    starPositions[i * 3 + 2] = distance * horizontal * Math.sin(theta);
-}
-
-const starGeometry = new THREE.BufferGeometry();
-starGeometry.setAttribute(
-    "position",
-    new THREE.BufferAttribute(starPositions, 3)
-);
-
-const stars = new THREE.Points(
-    starGeometry,
-    new THREE.PointsMaterial({
-        color: 0xdce8ff,
-        size: 0.55,
-        transparent: true,
-        opacity: 0.8,
-        depthWrite: false,
-        sizeAttenuation: true,
-    })
-);
-scene.add(stars);
-
-function makeStarGlowTexture() {
-    const size = 64;
-    const glowCanvas = document.createElement("canvas");
-    glowCanvas.width = size;
-    glowCanvas.height = size;
-
-    const context = glowCanvas.getContext("2d");
-    const gradient = context.createRadialGradient(
-        size / 2,
-        size / 2,
-        0,
-        size / 2,
-        size / 2,
-        size / 2
-    );
-    gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
-    gradient.addColorStop(0.2, "rgba(255, 255, 255, 0.85)");
-    gradient.addColorStop(0.5, "rgba(255, 238, 205, 0.28)");
-    gradient.addColorStop(1, "rgba(255, 238, 205, 0)");
-
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, size, size);
-
-    const texture = new THREE.CanvasTexture(glowCanvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    return texture;
-}
-
-// Five prominent stars at random positions, reserved for the stars that will
-// be highlighted in the foreground UI.
-const emphasisStarCount = 5;
-const emphasisStarPositions = new Float32Array(emphasisStarCount * 3);
-const emphasisStarColors = new Float32Array(emphasisStarCount * 3);
-const emphasisPalette = [0xfff6df, 0xffe4b0, 0xd8e8ff, 0xffd2c0, 0xf2e6ff];
-
-for (let i = 0; i < emphasisStarCount; i++) {
-    const distance = 30 + random() * 70;
-
-    emphasisStarPositions[i * 3] = (random() - 0.5) * distance * 1.1;
-    emphasisStarPositions[i * 3 + 1] = (random() - 0.5) * distance * 0.6;
-    emphasisStarPositions[i * 3 + 2] = -distance;
-
-    const color = new THREE.Color(emphasisPalette[i % emphasisPalette.length]);
-    emphasisStarColors[i * 3] = color.r;
-    emphasisStarColors[i * 3 + 1] = color.g;
-    emphasisStarColors[i * 3 + 2] = color.b;
-}
-
-const emphasisStarGeometry = new THREE.BufferGeometry();
-emphasisStarGeometry.setAttribute(
-    "position",
-    new THREE.BufferAttribute(emphasisStarPositions, 3)
-);
-emphasisStarGeometry.setAttribute(
-    "color",
-    new THREE.BufferAttribute(emphasisStarColors, 3)
-);
-
-const starGlowTexture = makeStarGlowTexture();
-
-const emphasisStars = new THREE.Points(
-    emphasisStarGeometry,
-    new THREE.PointsMaterial({
-        map: starGlowTexture,
-        size: 3.8,
-        vertexColors: true,
-        transparent: true,
-        opacity: 1,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        sizeAttenuation: true,
-    })
-);
-scene.add(emphasisStars);
-
-const emphasisStarHalos = new THREE.Points(
-    emphasisStarGeometry,
-    new THREE.PointsMaterial({
-        map: starGlowTexture,
-        color: 0xffd9a0,
-        size: 10,
-        transparent: true,
-        opacity: 0.2,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        sizeAttenuation: true,
-    })
-);
-scene.add(emphasisStarHalos);
-
-// Drag with the left mouse button to look around.
-let dragging = false;
-let previousX = 0;
-let previousY = 0;
-// Positive yaw means the camera is turned to the right.
-let yaw = 0;
-let pitch = 0;
-
-const maxPitch = Math.PI / 2 - 0.02;
-const dragSensitivity = 0.004;
-
-canvas.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) return;
-
-    dragging = true;
-    previousX = event.clientX;
-    previousY = event.clientY;
-    canvas.style.cursor = "grabbing";
-    canvas.setPointerCapture(event.pointerId);
-});
-
-canvas.addEventListener("pointermove", (event) => {
-    if (!dragging) return;
-
-    const deltaX = event.clientX - previousX;
-    const deltaY = event.clientY - previousY;
-    previousX = event.clientX;
-    previousY = event.clientY;
-
-    // Drag right -> look right. Three.js treats positive rotation.y as a
-    // counter-clockwise turn (to the left), so apply yaw with the opposite sign.
-    yaw += deltaX * dragSensitivity;
-    pitch -= deltaY * dragSensitivity;
-    pitch = THREE.MathUtils.clamp(pitch, -maxPitch, maxPitch);
-
-    camera.rotation.order = "YXZ";
-    camera.rotation.y = -yaw;
-    camera.rotation.x = pitch;
-});
-
-function stopDragging() {
-    dragging = false;
-    canvas.style.cursor = "grab";
-}
-
-canvas.addEventListener("pointerup", stopDragging);
-canvas.addEventListener("pointercancel", stopDragging);
-canvas.addEventListener("lostpointercapture", stopDragging);
-
-window.addEventListener("resize", () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
-
-const clock = new THREE.Clock();
-
-function animate() {
-    requestAnimationFrame(animate);
-
-    const elapsed = clock.getElapsedTime();
-    milkyWay.rotation.z = 0.32 + elapsed * 0.003;
-    andromeda.rotation.z = -0.55 - elapsed * 0.002;
-    blackHole.rotation.z = elapsed * 0.12;
-    nebulae.forEach((cloud, index) => {
-        cloud.rotation.z = elapsed * (index % 2 ? -0.002 : 0.002);
+    // Picking and hover feedback on the target beacons.
+    rig.onPick((x, y) => {
+        if (intro.active) { intro.skip(); return; }
+        if (!flight.labelsVisible) return;
+        const target = targets.pick(x, y);
+        if (target) pickHandlers.forEach(fn => fn(target));
+    });
+    canvas.addEventListener("pointermove", e => {
+        if (e.buttons) return;
+        const over = flight.labelsVisible && targets.hover(e.clientX, e.clientY);
+        canvas.style.cursor = over ? "pointer" : "grab";
     });
 
-    renderer.render(scene, camera);
-}
+    // Tuning handle for development only: window.spherexScene.debug with ?debug in the URL.
+    const debug = params.debug ? { post, blackHole, rig, state, world, flight, governor, hud, intro, debris, sound } : undefined;
 
-animate();
+    return {
+        ready,
+        debug,
+        get quality() { return tier.name; },
+        // Any scene action skips the intro first, so it never delays the warm zoom.
+        flyTo: (target, options) => { intro.skip(); return flight.flyTo(target, options); },
+        finish: () => flight.finish(),
+        showFrames: () => flight.finish(),
+        reset: () => { intro.skip(); return flight.reset(); },
+        replayIntro: () => intro.start(),
+        onPick(fn) { pickHandlers.add(fn); return () => pickHandlers.delete(fn); },
+        setQuality(name) { if (TIERS[name]) { governor.locked = true; scale = 1; applyTier(TIERS[name]); } },
+    };
+}
