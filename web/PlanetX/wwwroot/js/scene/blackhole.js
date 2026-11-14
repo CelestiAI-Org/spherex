@@ -63,7 +63,8 @@ uniform vec4 uFragAxis[${FRAGMENTS}];// fragment stretch axis and stretch
 uniform float uFragHeat[${FRAGMENTS}];
 uniform int uFragCount;
 uniform float uRockOn, uRockHeat, uEmitOut, uFlicker, uInnerFlare;
-uniform float uDiskFade;        // 0..1, used by the intro to fade the disk in
+uniform float uDiskFade;        // 0..1, used by the intro: the disk lights up from its inner edge outward
+uniform float uRingBoost;       // photon-ring brightness (the intro lets it ignite first)
 varying vec2 vUv;
 ${NOISE3}
 
@@ -99,6 +100,15 @@ vec3 palette(float t) {
 float diskFlux(float r) {
     float q = DISK_IN / r;
     return q * q * q * max(1.0 - sqrt(q), 0.0) * 17.7;
+}
+
+// Intro ignition: how lit the disk is at radius r, with a hotter front where it is spreading.
+float diskIgnite(float r) {
+    if (uDiskFade >= 0.999) return 1.0;
+    float x = (r - DISK_IN) / (DISK_OUT - DISK_IN);
+    float lit = clamp((uDiskFade * 1.35 - x) / 0.35, 0.0, 1.0);
+    float front = exp(-pow((x - (uDiskFade * 1.35 - 0.1)) / 0.1, 2.0)) * (1.0 - uDiskFade);
+    return lit * (1.0 + 2.0 * front);
 }
 
 // Mip level for a noise lookup whose texture coordinates change by "perUnit" per r_s, given the
@@ -469,7 +479,10 @@ void main() {
                 float rh = length(hit.xz);
                 if (rh > DISK_IN * 0.97 && rh < uEmitOut) {
                     vec3 dir = (pos - prev) / max(seg, 1e-5);
-                    vec4 e = disk(hit, dir, uPixelAngle * (travelled + seg * f), abs(dir.y)) * uDiskFade;
+                    vec4 e = disk(hit, dir, uPixelAngle * (travelled + seg * f), abs(dir.y));
+                    float ignite = diskIgnite(rh);
+                    e.rgb *= ignite;
+                    e.a *= min(ignite, 1.0);
                     col += transmit * e.rgb * e.a;
                     transmit *= 1.0 - e.a;
                 }
@@ -495,7 +508,7 @@ void main() {
         if (!escaped && !captured && 1.0 / max(u, 1e-4) < 2.5) captured = true;
         col += vec3(1.0, 0.78, 0.5) * glow * 0.025 * uDiskGain * uDiskFade;
         // The photon-ring glow belongs to rays that skim the photon sphere and get away.
-        if (!captured) col += vec3(1.0, 0.86, 0.68) * ringGlow * 0.4 * uDiskGain * (0.25 + 0.75 * uDiskFade);
+        if (!captured) col += vec3(1.0, 0.86, 0.68) * ringGlow * 0.4 * uDiskGain * (0.25 + 0.75 * uDiskFade) * uRingBoost;
         if (!captured && transmit > 0.02) {
             float ui = max(u, 1e-4);
             vec3 radial = c * e1 + s * e2;
@@ -614,6 +627,7 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
         uFlicker: { value: 1 },
         uInnerFlare: { value: 0 },
         uDiskFade: { value: 1 },
+        uRingBoost: { value: 1 },
     };
     const lensMaterial = new THREE.ShaderMaterial({
         vertexShader: fullscreenVertex, fragmentShader, uniforms, depthTest: false, depthWrite: false,
@@ -869,9 +883,10 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
         get lensRadius() { return Math.atan(R_SPHERE / DIST_RS); },
         get event() { return ev; },
         // Intro control: lens fades the whole lensed view in, disk fades the accretion disk in.
-        setFade(lens, disk) {
+        setFade(lens, disk, ring = 1) {
             composite.material.uniforms.uFade.value = lens;
             uniforms.uDiskFade.value = disk;
+            uniforms.uRingBoost.value = ring;
         },
         // Development helper: the asteroid's world position (for aiming the camera at it).
         rockWorld() {

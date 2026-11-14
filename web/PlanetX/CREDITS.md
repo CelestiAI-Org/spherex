@@ -4,6 +4,15 @@ All visuals in `wwwroot/js/space.js` and `wwwroot/js/scene/` are procedural and 
 project. No photographs, film assets or music are used. The libraries, code and ideas below are
 what the scene builds on.
 
+## Sound
+
+All sound is synthesised live in `scene/audio.js` with the browser's Web Audio API (oscillators,
+filtered noise, delays). There are no audio samples, recordings or music, and nothing is borrowed
+from any film or game.
+
+Voice lines, if added to `wwwroot/audio/voice/`, are the team's own recordings. None are
+included in the repository.
+
 ## Library
 
 | What | Licence | Used for |
@@ -35,4 +44,6 @@ what the scene builds on.
 | Flow-map style two-phase texture advection (common real-time technique) | Keeps the differentially rotating disk turbulence from winding up (`scene/blackhole.js`) |
 | Tidal disruption of a body falling into a black hole (spaghettification), radial free fall r ∝ (t₀ − t)^(2/3) with conserved angular momentum, and Keplerian spiralling of the debris (standard astrophysics) | The looping asteroid event: fall, tidal stretching and heating, debris stream that flares at the inner edge (`scene/blackhole.js`) |
 | Sphere tracing of signed distance fields (J. C. Hart, "Sphere tracing", The Visual Computer, 1996), tetrahedral-difference normals, and noise-displaced shapes with bowl craters (common procedural technique) | The tumbling asteroid, traced inside the lensing shader (`scene/blackhole.js`) |
+| Core-collapse supernova sequence (red-supergiant swelling, core collapse, shock breakout, expanding filamentary remnant), shown qualitatively and compressed in time | The intro's story beats and captions (`scene/intro.js`) |
+| Quadratic limb-darkening law and granulation as noise cells (standard stellar-surface rendering ideas) | The star's surface (`scene/intro.js`) |
 | Disk precession around spinning black holes (Lense–Thirring effect), used qualitatively | The slow wobble of the disk's tilt and roll (`scene/blackhole.js`) |

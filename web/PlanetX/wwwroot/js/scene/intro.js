@@ -9,23 +9,33 @@ import { DEG, clamp01, ease, rng } from "./util.js";
 //  10-12 s core collapse: it shrinks and dims, a held beat
 //  12-16 s supernova: a flash that ramps over ~300 ms, an expanding filamentary shell, ejecta
 //  12-20 s the shockwave ripple refracts the view and pushes rocks and dust outward
-//  18-25 s the remnant shrinks to a point, the black hole's lensing then its disk fade in, and
-//          the camera glides out to the idle shot
+//  17-20 s the gas thins, the camera pushes in and the core shrinks to a point and winks out
+//  20-28 s light starts to bend, the photon ring ignites, the disk lights from its inner edge
+//          outward, and the camera pulls back and glides to the idle shot
 //
 // Comfort: a single flash ramping over >= 200 ms, pulses below 2 Hz, no strobing. With
 // prefers-reduced-motion a gentle crossfade version plays (no flash, ripple, shake or camera move).
-// Flags: ?intro=off never plays, ?intro=on plays on every load; otherwise once per browser.
+// It plays on every page load, after a "Click to begin" screen. Flags: ?intro=off disables it;
+// ?gate=0 starts it without waiting for the click.
+// Sound comes from scene/audio.js, driven by this timeline through sound.sync(t).
 
-const DURATION = 25;
-const STORAGE_KEY = "spherex.introSeen.v1";
+const DURATION = 28;
 const STAR_RADIUS = 150;        // world units; the black hole sits at 1700
 
-const CAPTIONS = [
-    { from: 0.8, to: 4.6, text: "A massive star reaches the end of its life." },
-    { from: 5.6, to: 9.6, text: "Its core can no longer hold." },
-    { from: 12.9, to: 16.8, text: "A supernova outshines a whole galaxy for a few weeks." },
-    { from: 19.6, to: 24.2, text: "What remains can be a black hole." },
+// The story lines: when each caption appears (seconds into the intro) and the optional recorded
+// voice file that goes with it. Change the times or the text here.
+export const LINES = [
+    { at: 0.5, file: "line1.mp3", text: "A massive star reaches the end of its life." },
+    { at: 6, file: "line2.mp3", text: "Its core can no longer hold." },
+    { at: 12.5, file: "line3.mp3", text: "A supernova outshines a whole galaxy for a few weeks." },
+    { at: 19, file: "line4.mp3", text: "Gravity crushes what is left of the core." },
+    { at: 23, file: "line5.mp3", text: "What remains can be a black hole." },
 ];
+// Voice files are optional: wwwroot/audio/voice/line1.mp3 ... A missing file is skipped and its
+// caption still shows. level is the voice volume, duckTo how far the music and effects dip under
+// it (0.35 is about -9 dB), gap the pause between lines if one runs into the next.
+export const VOICE = { folder: "audio/voice/", level: 1.0, duckTo: 0.35, gap: 0.3 };
+const CAPTION_HOLD = 4.4;       // seconds a caption stays up (shorter if the next line is due)
 
 const smooth = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
 const lerp = THREE.MathUtils.lerp;
@@ -58,7 +68,7 @@ void main() {
     float a = uTime * 0.02;
     vec3 p = vec3(n.x * cos(a) - n.z * sin(a), n.y, n.x * sin(a) + n.z * cos(a));
     // Granulation: bright cells with dark lanes, plus larger supergranules and spots.
-    float cells = fbm(p * 14.0 + vec3(0.0, uTime * 0.05, 0.0), int(uOctaves));
+    float cells = fbm(p * 19.0 + vec3(0.0, uTime * 0.05, 0.0), int(uOctaves));
     float gran = smoothstep(0.32, 0.72, cells);
     float big = fbm(p * 3.5 - uTime * 0.01, 3);
     float spots = smoothstep(0.68, 0.8, big) * 0.25;
@@ -86,39 +96,53 @@ void main() {
     if (r < 0.98) discard;
     float ang = atan(vP.y, vP.x) / 6.2831853;
     float x = r - 1.0;
-    float streamer = texture2D(uNoise, vec2(ang * 5.0, x * 0.35 - uTime * 0.012)).r;
+    float streamer = textureLod(uNoise, vec2(ang * 5.0, x * 0.35 - uTime * 0.012), 1.0).r;
     float glow = exp(-x * 4.0) * 0.5 + exp(-x * 14.0) * 1.0;
     glow *= 0.75 + 0.5 * streamer;
     // Flares: a few soft plumes lifting off the limb (angular mask x radial falloff), drifting slowly.
-    float plumeMask = smoothstep(0.62, 0.85, texture2D(uNoise, vec2(ang * 2.0 + uTime * 0.003, 0.5)).g);
+    float plumeMask = smoothstep(0.62, 0.85, textureLod(uNoise, vec2(ang * 2.0 + uTime * 0.003, 0.5), 1.0).g);
     float flare = plumeMask * exp(-x * 4.0) * (0.6 + 0.4 * streamer) * uFlares;
     vec3 warm = mix(vec3(1.0, 0.35, 0.1), vec3(1.0, 0.8, 0.6), uTemp);
     vec3 col = warm * (glow + flare) * uBright * 0.3;
     col *= smoothstep(3.0, 1.6, r);
     gl_FragColor = vec4(col, 1.0);
 }`;
-// Expanding supernova shell, vP in units of the current shell radius.
+// Expanding supernova shell, vP in units of the current shell radius: a thin shock front with a
+// lumpy outline, a zone of filaments and knots behind it, and faint wisps inside.
 const shellFragment = /* glsl */ `
 uniform sampler2D uNoise;
-uniform float uTime, uAge, uAlpha, uSimple;
+uniform float uAge, uAlpha, uSimple;
 varying vec2 vP;
+float n(vec2 uv, int channel) {
+    vec4 t = textureLod(uNoise, uv, 1.0);        // fixed mip: no seam where the angle wraps
+    return channel == 0 ? t.r : channel == 1 ? t.g : t.b;
+}
 void main() {
-    float r = length(vP);
-    if (r > 1.25) discard;
+    float r0 = length(vP);
+    if (r0 > 1.3) discard;
     float ang = atan(vP.y, vP.x) / 6.2831853;
-    // Filaments: ridged noise in polar coordinates, drawn radially outward.
-    float fil = texture2D(uNoise, vec2(ang * 6.0, r * 0.6 - uAge * 0.05)).b;
-    float knots = texture2D(uNoise, vec2(ang * 11.0 + 0.3, r * 1.4)).r;
-    float edge = exp(-pow((r - 1.0) / (0.03 + 0.035 * knots), 2.0));
-    float inner = smoothstep(1.0, 0.25, r) * 0.08;
-    float strands = pow(fil, 2.5);
-    float body = mix(edge * (0.15 + 2.2 * strands), edge * 0.6, uSimple) + inner * (0.3 + 1.5 * strands);
-    // Hot to cool with age and toward the inside: blue-white -> gold -> red/magenta.
-    vec3 hot = vec3(0.8, 0.88, 1.0), mid = vec3(1.0, 0.7, 0.35), cool = vec3(0.9, 0.25, 0.35);
-    float age = clamp(uAge / 7.0, 0.0, 1.0);
-    vec3 col = age < 0.4 ? mix(hot, mid, age / 0.4) : mix(mid, cool, (age - 0.4) / 0.6);
-    col = mix(col, cool * vec3(0.8, 0.6, 1.2), smoothstep(0.9, 0.3, r) * 0.6);
-    gl_FragColor = vec4(col * body * uAlpha, 1.0);
+    float lump = n(vec2(ang * 2.0, 0.37), 0) - 0.5;
+    float fine = n(vec2(ang * 9.0, 0.71), 1) - 0.5;
+    float r = r0 / (1.0 + 0.11 * lump + 0.035 * fine);
+    float front = exp(-pow((r - 1.0) / 0.011, 2.0)) + 0.35 * exp(-pow((r - 1.0) / 0.035, 2.0));
+    float zone = smoothstep(0.6, 0.96, r) * (1.0 - smoothstep(0.985, 1.02, r));
+    float f1 = n(vec2(ang * 7.0, r * 1.1 - uAge * 0.03), 2);
+    float f2 = n(vec2(ang * 17.0 + 0.4, r * 2.3), 2);
+    float fil = pow(f1, 2.2) * 1.7 + pow(f2, 3.0) * 1.3;
+    float knots = smoothstep(0.62, 0.9, n(vec2(ang * 13.0, r * 3.0 + 0.2), 0));
+    float wisp = n(vec2(ang * 4.0 + r * 0.3, r * 0.9 - uAge * 0.02), 1);
+    float interior = smoothstep(1.0, 0.15, r) * smoothstep(0.05, 0.3, r) * wisp * wisp * 0.2;
+    float age = clamp(uAge / 6.0, 0.0, 1.0);
+    vec3 frontCol = mix(vec3(0.68, 0.84, 1.0), vec3(1.0, 0.74, 0.5), age);
+    vec3 filCol = mix(vec3(1.0, 0.84, 0.58), vec3(1.0, 0.36, 0.2), clamp(smoothstep(1.0, 0.62, r) * 0.75 + age * 0.4, 0.0, 1.0));
+    // Patches of blue-green gas among the gold and red, as in real remnants.
+    float hue = n(vec2(ang * 3.0 + 0.1, r * 0.8), 0);
+    filCol = mix(filCol, vec3(0.3, 0.85, 0.8), smoothstep(0.52, 0.78, hue) * 0.65 * (0.35 + 0.65 * age));
+    vec3 inCol = mix(vec3(0.95, 0.3, 0.42), vec3(0.42, 0.26, 0.9), smoothstep(0.75, 0.2, r));
+    vec3 col = frontCol * front * 1.3
+             + filCol * zone * mix(fil + knots * 0.7, 0.45, uSimple)
+             + inCol * interior * (1.0 - uSimple);
+    gl_FragColor = vec4(col * uAlpha, 1.0);
 }`;
 const glowFragment = /* glsl */ `
 uniform vec3 uColor;
@@ -141,8 +165,9 @@ void main() {
     vec3 world = uCentre + aEject.xyz * travel;
     vec4 mv = viewMatrix * vec4(world, 1.0);
     gl_Position = projectionMatrix * mv;
-    gl_PointSize = max(2.5 * uPxScale * (0.6 + aEject.w / 900.0), 1.5);
-    vFade = smoothstep(0.0, 0.3, uProgress) * (1.0 - smoothstep(4.0, 9.0, uProgress));
+    float h = fract(aEject.w * 0.0137);
+    gl_PointSize = max((1.2 + 3.2 * h * h) * uPxScale, 1.5);
+    vFade = smoothstep(0.0, 0.3, uProgress) * (1.0 - smoothstep(4.0, 9.0, uProgress)) * (0.25 + 1.3 * h * h);
     vHeat = clamp(1.0 - uProgress / 6.0, 0.0, 1.0);
 }`;
 const ejectaFragment = /* glsl */ `
@@ -166,7 +191,7 @@ function billboard(fragmentShader, uniforms, size) {
     return mesh;
 }
 
-export function createIntro({ world, rig, state, post, blackHole, debris, flight, shared, noise, home, params }) {
+export function createIntro({ world, rig, state, post, blackHole, debris, flight, shared, noise, home, params, sound }) {
     const centre = blackHole.position.clone();
     const reduced = params.reducedMotion;
     const search = new URLSearchParams(location.search);
@@ -247,9 +272,27 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
     const dustShock = new THREE.Vector3();
     let dustPassed = -1;
 
-    function seen() { try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch { return false; } }
-    function markSeen() { try { localStorage.setItem(STORAGE_KEY, "1"); } catch { /* private mode etc. */ } }
-    const shouldPlay = flag === "on" || (flag !== "off" && !seen());
+    sound?.setVoice(LINES, VOICE, DURATION);
+    const shouldPlay = flag !== "off";                  // plays on every load unless ?intro=off
+    // A "Click to begin" screen holds the first frame, so one click starts picture and sound
+    // together (browsers only allow audio after a gesture). ?gate=0 skips it.
+    let gatePending = search.get("gate") !== "0" && shouldPlay;
+    let held = false;
+    const gate = document.createElement("button");
+    gate.type = "button";
+    gate.className = "intro-gate";
+    gate.hidden = true;
+    gate.innerHTML = "<span>SPHEREx Explorer</span><strong>Click to begin</strong><em>Best with sound</em>";
+    document.body.appendChild(gate);
+    function begin() {
+        if (!held) return;
+        held = false;
+        gate.hidden = true;
+        document.body.classList.remove("is-gated");
+        skipButton.hidden = false;
+        sound?.startIntro();
+    }
+    gate.addEventListener("click", begin);
 
     function setCaption(text) {
         if (caption.dataset.text === (text || "")) return;
@@ -270,7 +313,12 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
         shell.visible = false;
         ejecta.visible = false;
         document.body.classList.add("in-intro");
-        skipButton.hidden = false;
+        held = gatePending;
+        gatePending = false;
+        gate.hidden = !held;
+        document.body.classList.toggle("is-gated", held);
+        skipButton.hidden = held;
+        if (!held) sound?.startIntro();
         rig.inputEnabled = false;
         if (rig.anim) { rig.anim.resolve(false); rig.anim = null; }
         rig.velocity.set(0, 0);
@@ -304,7 +352,10 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
         debris.setDustShock(dustShock.set(0, 0, 0));
         rig.shake = 0;
         rig.inputEnabled = true;
-        markSeen();
+        held = false;
+        gate.hidden = true;
+        document.body.classList.remove("is-gated");
+        sound?.endIntro(cut);
         if (cut) {
             if (rig.anim) { rig.anim.resolve(false); rig.anim = null; }
             rig.yaw = home.ra * DEG;
@@ -331,7 +382,8 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
 
     function update(dt) {
         if (!active) return;
-        t += dt;
+        if (!held) t += dt;
+        sound?.sync(t);
         const u = post.uniforms;
         // A huge bright disc makes the pseudo lens flare and streak look wrong: off during the intro.
         u.uFlare.value = 0;
@@ -346,7 +398,7 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
         star.scale.setScalar(radius);
         star.visible = corona.visible = t < 12.05;
         starUniforms.uTemp.value = lerp(0.9, 0.2, swell) + collapse * 0.5;
-        starUniforms.uBright.value = (0.95 + 0.55 * swell + pulse * 8) * (1 - 0.75 * collapse);
+        starUniforms.uBright.value = (1.3 + 0.5 * swell + pulse * 8) * (1 - 0.75 * collapse);
         starUniforms.uActivity.value = lerp(0.3, 1.0, swell);
         coronaUniforms.uFlares.value = lerp(0.35, 1.3, swell) * (1 - collapse);
         coronaUniforms.uBright.value = (1 + 0.9 * swell) * (1 - collapse * 0.9);
@@ -361,43 +413,54 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
         // The flash comes from the core (a bloom burst), plus only a slight overall lift.
         u.uFlash.value = Math.max(u.uFlash.value, flash * 0.12);
 
-        shell.visible = sn > 0 && sn < 8.6;
+        shell.visible = sn > 0 && sn < 10.6;
         if (shell.visible) {
             const grow = 1 - Math.exp(-sn * 0.42);
             const shellR = STAR_RADIUS * (0.6 + (tier?.name === "low" ? 4.5 : 6.5) * grow);
             shell.scale.setScalar(shellR);
             shell.quaternion.copy(rig.camera.quaternion);
             shellUniforms.uAge.value = sn;
-            shellUniforms.uAlpha.value = smooth(0, 0.4, sn) * (1 - smooth(4.5, 8.5, sn)) * 1.1;
+            shellUniforms.uAlpha.value = smooth(0, 0.4, sn) * (1 - smooth(4.5, 10.5, sn)) * 0.8;
             shellUniforms.uSimple.value = tier?.name === "low" ? 1 : 0;
         }
         ejecta.visible = sn > 0 && sn < 10 && !reduced;
         ejectaUniforms.uProgress.value = Math.max(sn, 0);
 
         // Remnant glow, then the core shrinks to a point as the black hole fades in.
-        const remnantBright = sn > 0 ? smooth(0, 0.5, sn) * (0.9 * Math.exp(-sn / 4) + 0.45) * (1 - smooth(18.5, 21.5, t)) : 0;
-        remnantUniforms.uBright.value = remnantBright + flash * 9;
-        remnant.scale.setScalar(STAR_RADIUS * lerp(1.6, 0.35, smooth(16, 21, t)));
+        // The core shrinks to a point, gathers its last light, and winks out as the hole forms.
+        const lastLight = 2.2 * smooth(19.2, 19.8, t) * (1 - smooth(19.9, 20.5, t));
+        const remnantBright = sn > 0 ? (smooth(0, 0.5, sn) * (0.9 * Math.exp(-sn / 4) + 0.45) + lastLight) * (1 - smooth(19.9, 20.5, t)) : 0;
+        remnantUniforms.uBright.value = remnantBright + flash * 6;
+        remnant.scale.setScalar(STAR_RADIUS * lerp(1.6, 0.1, smooth(15, 19.8, t)));
         remnant.quaternion.copy(rig.camera.quaternion);
         remnant.visible = remnantBright > 0.001;
 
         // ---- Black hole: lensing first, then the disk.
-        blackHole.setFade(smooth(18.5, 21.5, t), smooth(20.5, 24.5, t));
+        // Light starts to bend (20-23 s), the photon ring ignites (21.5 s), then the disk lights
+        // from its inner edge outward (22-27 s).
+        const ringIgnite = 1 + 6 * smooth(21.3, 22.3, t) * (1 - smooth(23.2, 25.5, t));
+        blackHole.setFade(smooth(20, 23, t), smooth(22, 27, t), ringIgnite);
 
         // ---- Ripple: screen-space ring from the star's projection.
         centreScreen.copy(centre).project(rig.camera);
         centreScreen.set(centreScreen.x * 0.5 + 0.5, centreScreen.y * 0.5 + 0.5, 0);
-        const rip = t - 12.3;
+        const rip = t - 12.15;
         rippleOn = rip > 0 && rip < 8 && !reduced;
         if (rippleOn) {
-            rippleRadius = 2.1 * (1 - Math.exp(-rip * 0.42)) + rip * 0.03;
-            const strength = 0.022 * smooth(0, 0.6, rip) * (1 - smooth(4.5, 8, rip));
+            rippleRadius = 0.42 * Math.pow(rip, 0.85);       // crosses the frame in about 3 s, ahead of the shell
+            const strength = 0.034 * smooth(0, 0.4, rip) * (1 - smooth(3.5, 6.5, rip));
             u.uRipple.value.set(centreScreen.x, centreScreen.y, rippleRadius, strength);
-            u.uRippleWidth.value = 0.045 + rip * 0.01;
+            u.uRippleWidth.value = 0.04 + rip * 0.012;
             u.uRippleRefract.value = tier?.name === "low" ? 0 : 1;
             // Dust: once the ring has swept past the screen centre, the field drifts outward and settles.
             const toCentre = Math.hypot((0.5 - centreScreen.x) * innerWidth / innerHeight, 0.5 - centreScreen.y);
             if (dustPassed < 0 && rippleRadius > toCentre) dustPassed = t;
+        } else if (t > 10.3 && t < 11.9 && !reduced) {
+            // Core collapse: light is pulled inward, a ring closing on the star.
+            u.uRipple.value.set(centreScreen.x, centreScreen.y, 0.02 + 0.55 * (1 - smooth(10.3, 11.9, t)),
+                -0.02 * smooth(10.3, 10.8, t) * (1 - smooth(11.5, 11.9, t)));
+            u.uRippleWidth.value = 0.07;
+            u.uRippleRefract.value = tier?.name === "low" ? 0 : 1;
         } else {
             u.uRipple.value.w = 0;
         }
@@ -418,26 +481,38 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
                 const shudder = smooth(6, 10, t) * (1 - smooth(10.2, 10.8, t)) * 0.12 * DEG;
                 rig.yaw = aim.yaw + 1.2 * DEG * Math.sin(t * 0.12) + shudder * Math.sin(t * 31.0) * Math.sin(t * 2.3);
                 rig.pitch = aim.pitch + 0.6 * DEG * Math.sin(t * 0.09 + 1) + shudder * Math.sin(t * 27.0 + 1.0) * Math.cos(t * 1.7);
-                const push = lerp(30, 27, smooth(0, 10, t));
-                const pull = lerp(0, 18, ease.outCubic(clamp01((t - 12.2) / 4.5)));
-                rig.fov = rig.fovTarget = push + pull;
+                // Lens: slow push-in on the star, a tighter push as it collapses, a pull back with the
+                // blast, then a slow push-in again on the dying core.
+                let fov = lerp(30, 27, smooth(0, 10, t));
+                fov -= 2.5 * ease.inCubic(clamp01((t - 10) / 2));
+                fov += 21.5 * ease.outCubic(clamp01((t - 12.1) / 5));
+                fov -= 6 * smooth(16.5, 20.5, t);
+                rig.fov = rig.fovTarget = fov;
             }
-            if (t >= 18) {
+            if (t >= 20.5) {
+                // Hand over: pull back and glide to the idle shot while the disk ignites.
                 cameraHanded = true;
                 rig.shake = 0;
-                rig.animateTo({ yaw: home.ra * DEG, pitch: home.dec * DEG, fov: home.fov, duration: reduced ? 5 : 7, easing: ease.inOutCubic });
+                rig.animateTo({ yaw: home.ra * DEG, pitch: home.dec * DEG, fov: home.fov, duration: 7, easing: ease.inOutCubic });
             }
         }
 
         // ---- Exposure: the held beat at collapse dims the frame.
-        state.exposureTarget = 1 - 0.45 * smooth(10, 11.3, t) * (1 - smooth(11.8, 12.4, t));
+        state.exposureTarget = (1 - 0.45 * smooth(10, 11.3, t) * (1 - smooth(11.8, 12.4, t)))
+            * (1 - 0.22 * smooth(19.9, 20.5, t) * (1 - smooth(21.3, 23, t)));       // a breath of dark as the core winks out
         state.exposureRate = 2.5;
 
         // ---- Captions.
-        const current = CAPTIONS.findIndex(c => t >= c.from && t < c.to);
+        let current = -1;
+        LINES.forEach((line, i) => {
+            const until = Math.min(line.at + CAPTION_HOLD, (LINES[i + 1]?.at ?? Infinity) - 0.5);
+            if (t >= line.at + 0.3 && t < until) current = i;
+        });
+        const speaking = sound?.voiceLine ?? -1;          // a caption stays up while its line is spoken
+        if (speaking >= 0) current = speaking;
         if (current !== captionIndex) {
             captionIndex = current;
-            setCaption(current >= 0 ? CAPTIONS[current].text : "");
+            setCaption(current >= 0 ? LINES[current].text : "");
         }
 
         if (t >= DURATION) finish({ cut: false });
@@ -448,7 +523,10 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
     addEventListener("keydown", e => {
         if (!active) return;
         const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName);
-        if (e.key === "Escape" || (e.key === " " && !typing)) {
+        if (held && (e.key === " " || e.key === "Enter")) {
+            e.preventDefault();
+            begin();
+        } else if (e.key === "Escape" || (e.key === " " && !typing)) {
             e.preventDefault();
             finish();
         }

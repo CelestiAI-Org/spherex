@@ -81,13 +81,13 @@ void main() {
     // Supernova shockwave: a ring that refracts the view as it passes (derivative-of-Gaussian
     // displacement), with a faint chromatic fringe. Low tier: no refraction, just a soft ring.
     float ringLight = 0.0;
-    if (uRipple.w > 0.0) {
+    if (uRipple.w != 0.0) {
         vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
         vec2 d = (uv - uRipple.xy) * aspect;
         float dist = length(d);
         float x = (dist - uRipple.z) / uRippleWidth;
         float g = exp(-x * x);
-        ringLight = g * uRipple.w * 6.0;
+        ringLight = g * max(uRipple.w, 0.0) * 6.0;      // a negative strength bends inward, with no glow
         if (uRippleRefract > 0.5) {
             vec2 off = (d / max(dist, 1e-4)) / aspect * (x * g) * uRipple.w;
             col = vec3(sceneCA(uv - off * 1.25).r, sceneCA(uv - off).g, sceneCA(uv - off * 0.75).b);
@@ -113,7 +113,7 @@ void main() {
 
     vec3 bloom = texture2D(tBloom, uv).rgb;
     col += bloom * uBloom;
-    col += vec3(0.75, 0.85, 1.0) * ringLight * 0.06;
+    col += vec3(0.7, 0.82, 1.0) * ringLight * 0.14;
 
     // Pseudo lens flare: ghosts of bright sources mirrored through the frame centre.
     if (uFlare > 0.0) {
