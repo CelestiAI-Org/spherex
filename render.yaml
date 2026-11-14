@@ -1,7 +1,9 @@
-# Render Blueprint: New + > Blueprint, pick this repo/branch. Builds the Dockerfile.
+# Render Blueprint (used only if the service is Blueprint-managed; a manually created service ignores this file).
+# Render builds the `deploy` branch: backend files only, no cache/ or frontend. Refresh it with scripts/update_deploy.sh.
 services:
   - type: web
     name: spherex-api
     runtime: docker
+    branch: deploy
     plan: free
     healthCheckPath: /health
