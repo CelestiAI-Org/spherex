@@ -49,7 +49,8 @@ git ls-tree -r "$SRC_SHA" | awk -F'\t' -v inc="$INCLUDE" -v exc="$EXCLUDE" '$2 ~
 NOTE=$(printf '%s\n' \
   '# deploy branch (auto-generated)' '' \
   'Backend files only, for the Render Docker build. Do not edit here: change main, then run `scripts/update_deploy.sh`.' '' \
-  "Built from main at ${SRC_SHA}." | git hash-object -w --stdin)
+  '(The main commit each deploy came from is in the commit message. It is NOT written into any file, so a main commit that' \
+  'changes no backend file leaves this tree identical and the script does nothing - no needless Render rebuild.)' | git hash-object -w --stdin)
 printf '100644 blob %s\tDEPLOY_BRANCH.md\n' "$NOTE" | git update-index --index-info
 
 # --- safety checks ------------------------------------------------------------------------------------
