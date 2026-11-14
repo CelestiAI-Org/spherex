@@ -371,6 +371,31 @@ export function createSound({ reduced = false, debug = false } = {}) {
         });
     }
 
+    // The disk igniting: a low swell with rising air, gentle.
+    function ignite() {
+        oneShot(5.5, (shot, t0) => {
+            const g = gain(0, shot.out);
+            const o = ctx.createOscillator();
+            o.frequency.setValueAtTime(41, t0);
+            o.frequency.linearRampToValueAtTime(55, t0 + 4.5);
+            g.gain.setValueAtTime(0, t0);
+            g.gain.linearRampToValueAtTime(reduced ? 0.12 : 0.3, t0 + 2.2);
+            g.gain.linearRampToValueAtTime(0, t0 + 5);
+            o.connect(g);
+            o.start(t0);
+            o.stop(t0 + 5.2);
+            const ng = gain(0, shot.out);
+            const band = filter("bandpass", 300, 0.9, ng);
+            band.frequency.setValueAtTime(300, t0);
+            band.frequency.exponentialRampToValueAtTime(1400, t0 + 4);
+            ng.gain.setValueAtTime(0, t0);
+            ng.gain.linearRampToValueAtTime(0.05, t0 + 2.5);
+            ng.gain.linearRampToValueAtTime(0, t0 + 5);
+            shot.sources.push(o, noise(band));
+            shot.nodes.push(g, ng, band);
+        });
+    }
+
     // Fire a one-shot when the timeline crosses its time (not when joining late).
     function cue(name, t, at, fn) {
         if (fired[name] || t < at) return;
@@ -404,12 +429,13 @@ export function createSound({ reduced = false, debug = false } = {}) {
                 cue("whoosh", t, 12.15, () => whoosh(0.35, -0.85, 3.2));
             }
             cue("boom", t, 12, boom);
+            cue("ignite", t, 22, ignite);
             cue("pad", t, 17.5, () => startPad(6));
             if (t - lastSync < 0.1 || !intro) return;
             lastSync = t;
             const drone = t < 10 ? 0.15 * smooth(0, 3.5, t) * (1 + 0.6 * smooth(5, 10, t))
                 : t < 12 ? 0.24 * (1 - smooth(10, 11.4, t))            // held near-silence before the boom
-                : 0.1 * smooth(12, 13.5, t) * (1 - smooth(17, 22, t));
+                : 0.1 * smooth(12, 13.5, t) * (1 - smooth(17, 21, t));
             glide(intro.droneGain.gain, drone, 0.25);
             const open = smooth(0, 10, t);
             glide(intro.droneFilter.frequency, t < 12 ? 110 + 720 * open * open : 260, 0.3);
