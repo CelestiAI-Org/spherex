@@ -199,7 +199,7 @@ export class Post {
             }));
             if (this.width) this.setSize(this.width, this.height);
         }
-        this.uniforms.uFlare.value = tier.flare ? 0.35 : 0;
+        this.uniforms.uFlare.value = tier.flare ? 0.18 : 0;
         this.uniforms.uStreak.value = tier.streak ? 0.12 : 0;
         this.uniforms.uCA.value = tier.ca;
         this.uniforms.uGrain.value = tier.grain;

@@ -8,19 +8,19 @@ export const TIERS = {
     low: {
         name: "low", pixelRatio: 0.85, cubeSize: 1024, msaa: 0, bloomLevels: 4,
         stars: 0.45, heroStars: 0.6, nebulaLayers: 4, galaxyPoints: 0.35,
-        bhSteps: 44, bhOctaves: 2, bhScale: 0.5, bhScaleMin: 0.5, asteroids: 60, dust: 0.4,
+        bhSteps: 44, bhOctaves: 2, bhDebris: 10, bhScale: 0.5, bhScaleMin: 0.5, asteroids: 60, dust: 0.4,
         flare: false, streak: false, grain: 0.03, ca: 0.0,
     },
     medium: {
         name: "medium", pixelRatio: 1, cubeSize: 1536, msaa: 0, bloomLevels: 5,
         stars: 0.75, heroStars: 1, nebulaLayers: 6, galaxyPoints: 0.7,
-        bhSteps: 64, bhOctaves: 3, bhScale: 0.6, bhScaleMin: 0.5, asteroids: 140, dust: 0.75,
+        bhSteps: 64, bhOctaves: 3, bhDebris: 16, bhScale: 0.6, bhScaleMin: 0.5, asteroids: 140, dust: 0.75,
         flare: true, streak: true, grain: 0.035, ca: 0.6,
     },
     high: {
         name: "high", pixelRatio: 1.5, cubeSize: 2048, msaa: 4, bloomLevels: 6,
         stars: 1, heroStars: 1, nebulaLayers: 8, galaxyPoints: 1,
-        bhSteps: 110, bhOctaves: 4, bhScale: 0.85, bhScaleMin: 0.6, asteroids: 220, dust: 1,
+        bhSteps: 110, bhOctaves: 4, bhDebris: 24, bhScale: 0.85, bhScaleMin: 0.6, asteroids: 220, dust: 1,
         flare: true, streak: true, grain: 0.035, ca: 1.0,
     },
 };

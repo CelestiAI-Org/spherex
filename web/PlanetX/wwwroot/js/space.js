@@ -202,7 +202,7 @@ function createSpaceScene(renderer) {
     };
     const flight = new Flight({ rig, state, post, streaks, targets, home: HOME });
     flight.reducedMotion = params.reducedMotion;
-    if (params.reducedMotion) rig.driftSpeed *= 0.4;
+    if (params.reducedMotion) rig.swayAmplitude *= 0.4;
 
     // If the GPU drops the context (driver reset, too many tabs), swap to the 2D sky.
     canvas.addEventListener("webglcontextlost", event => {
@@ -257,7 +257,7 @@ function createSpaceScene(renderer) {
         u.uDesaturate.value = state.desaturate;
 
         camera.updateMatrixWorld();
-        blackHole.render(time, camera);
+        blackHole.render(time, camera, dt);
         post.render(world, camera, time);
         governor.update(dt);
 

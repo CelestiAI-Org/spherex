@@ -25,7 +25,11 @@ export class CameraRig {
         this.shake = 0;
         this.idle = 0;
         this.inputEnabled = true;
-        this.driftSpeed = -0.0045;              // rad/s, slowly turning right
+        // Idle sway: the view glides very slowly left and right (about ±5° over 2.5 minutes)
+        // instead of drifting off, so the black hole stays in frame while it moves.
+        this.swayAmplitude = 5 * Math.PI / 180;
+        this.swayPeriod = 150;
+        this.swayTime = 0;
         this.anim = null;
         this.pickHandlers = new Set();
         this._forward = new THREE.Vector3();
@@ -131,7 +135,9 @@ export class CameraRig {
             this.velocity.multiplyScalar(Math.exp(-3.2 * dt));
             this.idle += dt;
             const drift = THREE.MathUtils.smoothstep(this.idle, 5, 10);
-            this.yaw += this.driftSpeed * drift * dt;
+            this.swayTime += dt * drift;
+            const w = TAU / this.swayPeriod;
+            this.yaw += this.swayAmplitude * w * Math.cos(this.swayTime * w) * drift * dt;
         }
         this.fov = damp(this.fov, this.fovTarget, 6, dt);
 

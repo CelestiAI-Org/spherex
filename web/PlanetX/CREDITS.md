@@ -33,3 +33,5 @@ what the scene builds on.
 | Sergei Winitzki, "A handy approximation for the error function and its inverse" (2008), a = 0.147 | Exact per-step integral of the disk's Gaussian glow sheet, so the glow never shows step artefacts (`scene/blackhole.js`) |
 | Texture level-of-detail from the projected pixel footprint (standard texture-filtering practice) | Explicit noise mip levels on the edge-on disk, where automatic derivatives inside the ray loop are unreliable (`scene/blackhole.js`) |
 | Flow-map style two-phase texture advection (common real-time technique) | Keeps the differentially rotating disk turbulence from winding up (`scene/blackhole.js`) |
+| Tidal disruption of a body falling into a black hole (spaghettification), radial free fall r ∝ (t₀ − t)^(2/3) with conserved angular momentum, and Keplerian spiralling of the debris (standard astrophysics) | The looping asteroid event: fall, tidal stretching and heating, debris stream that flares at the inner edge (`scene/blackhole.js`) |
+| Disk precession around spinning black holes (Lense–Thirring effect), used qualitatively | The slow wobble of the disk's tilt and roll (`scene/blackhole.js`) |
