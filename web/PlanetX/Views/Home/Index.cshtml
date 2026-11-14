@@ -1,0 +1,132 @@
+@{
+    ViewData["Title"] = "SPHEREx Explorer";
+}
+
+<div class="explorer">
+    @* Jonty: mount the Three.js canvas inside this container. *@
+    <div id="sky-scene" aria-label="Sky scene"></div>
+
+    <header class="explorer-heading">
+        <h1>SPHEREx Explorer</h1>
+    </header>
+
+    <aside class="target-menu" aria-label="Target selection">
+        <div id="target-panel" class="ui-panel" hidden>
+            <h2>Find a target</h2>
+            <form id="target-form">
+                <label for="search-mode">Search by</label>
+                <select id="search-mode">
+                    <option value="name">Target name</option>
+                    <option value="coordinates">RA / Dec</option>
+                </select>
+
+                <div id="name-fields">
+                    <label for="target-name">Target name</label>
+                    <input id="target-name" name="name" placeholder="Barnard's Star" required />
+                </div>
+
+                <fieldset id="coordinate-fields" hidden disabled>
+                    <legend>Coordinates (degrees)</legend>
+                    <label for="ra">RA</label>
+                    <input id="ra" name="ra" type="number" min="0" max="359.999999" step="any" required />
+                    <label for="dec">Dec</label>
+                    <input id="dec" name="dec" type="number" min="-90" max="90" step="any" required />
+                </fieldset>
+
+                <label for="fov">Field of view (arcmin)</label>
+                @* Provisional unit; confirm with the data API before integration. *@
+                <input id="fov" name="fov" type="number" min="0.1" step="any" value="10" required />
+                <button type="submit">Explore</button>
+            </form>
+        </div>
+        <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="target-panel">☰ Targets</button>
+    </aside>
+
+    <p id="status" class="ui-panel status" role="status" aria-live="polite" hidden></p>
+
+    <section id="viewer" class="observation-viewer" aria-labelledby="viewer-title" hidden>
+        <div class="observation-top">
+            <aside class="observation-info observation-panel">
+                <button id="back-to-sky" type="button">← Back to sky</button>
+                <h2 id="viewer-title">Observation</h2>
+                <p id="target-detail" class="muted"></p>
+                <figure class="spectrum-figure">
+                    <div class="spectrum-heading">
+                        <div><figcaption>Infrared spectrum</figcaption><p id="spectrum-selection" class="muted"></p></div>
+                        <div class="spectrum-legend" aria-label="Spectrum legend">
+                            <span><i class="legend-saturated" aria-hidden="true"></i>saturated</span>
+                            <span id="legend-a" hidden><i class="legend-series legend-series-a" aria-hidden="true"></i>A</span>
+                            <span id="legend-b" hidden><i class="legend-series legend-series-b" aria-hidden="true"></i>B</span>
+                        </div>
+                    </div>
+                    <svg id="spectrum-chart" viewBox="0 0 360 228" role="img" aria-label="Flux by wavelength"></svg>
+                    <p id="spectrum-message" class="muted" role="status">Loading spectrum…</p>
+                </figure>
+                <button id="share-view" type="button">↗ Copy share link</button>
+                <p id="share-status" class="muted" role="status"></p>
+            </aside>
+            <div class="observation-preview observation-panel">
+                <div id="frame-container" tabindex="0" role="group" aria-label="Observation image. Scroll or use plus and minus to zoom; drag or use arrow keys to pan; zero to reset.">
+                    <img id="observation-image" alt="" draggable="false" hidden />
+                    <p id="image-message" role="status">Loading observation…</p>
+                </div>
+                <div class="preview-caption"><span id="image-caption"></span><span>Scroll to zoom · Drag to pan · <button id="reset-image" type="button">Reset</button></span></div>
+            </div>
+        </div>
+        <div id="observation-controls" class="observation-controls observation-panel" data-kind="epoch">
+            <div class="image-type-control">
+                <div class="control-heading">Image type</div>
+                <div id="image-types" class="segmented-selector" role="group" aria-label="Image type">
+                    <button type="button" data-source="epoch" aria-pressed="true">Time</button>
+                    <button type="button" data-source="band" aria-pressed="false">Band</button>
+                    <button type="button" data-source="detector" aria-pressed="false">Detector</button>
+                </div>
+            </div>
+            <div class="image-selection">
+                <div id="time-selection">
+                    <div class="control-heading time-heading"><span>Observation time</span>                <div id="time-modes" class="segmented-selector" role="group" aria-label="Timeline mode">
+                    <button type="button" data-mode="single" aria-pressed="true">Single</button>
+                    <button type="button" data-mode="compare" aria-pressed="false">Compare</button>
+                    <button type="button" data-mode="timelapse" aria-pressed="false">Timelapse</button>
+                </div><button id="pause-play" type="button" aria-label="Pause playback" hidden>Ⅱ</button></div>
+                    <div class="date-selection-row">
+                        <div id="timeline-track" class="timeline-track">
+                            <div class="timeline-rail"><div id="timeline-fill"></div></div>
+                            <input id="time-start" type="range" min="0" max="0" step="1" value="0" aria-label="Observation date" />
+                            <input id="time-end" type="range" min="0" max="0" step="1" value="0" aria-label="End observation date" hidden />
+                        </div>
+                        <time id="observation-date">—</time>
+                    </div>
+                </div>
+                <div id="band-selection" hidden>
+                    <div class="control-heading"><label for="band-slider">Wavelength</label><span id="band-detail" class="selection-detail"></span></div>
+                    <div class="wavelength-selection-row">
+                        <input id="band-slider" type="range" min="0" max="0" step="1" value="0" aria-label="Spectral band" />
+                        <output id="band-range" for="band-slider">—</output>
+                    </div>
+                </div>
+                <div id="detector-selection" hidden>
+                    <div class="control-heading"><span>Detector</span></div>
+                    <div class="detector-selection-row">
+                        <div id="observer-options" class="observer-options" role="group" aria-label="Detector selection"></div>
+                        <output id="detector-range">Wavelength coverage: —</output>
+                    </div>
+                </div>
+            </div>
+            <div id="display-options" class="display-options">
+                <div class="control-heading">Display</div><div class="display-appearance"><div id="image-appearance" class="segmented-selector" role="group" aria-label="Image display">
+                    <button type="button" data-appearance="colour" aria-pressed="true">Colour</button>
+                    <button type="button" data-appearance="gray" aria-pressed="false">Grayscale</button>
+                </div></div>
+
+            </div>
+        </div>
+    </section>
+</div>
+
+<div id="viewer-container"></div>
+
+@section Scripts {
+    <script src="~/js/ui.js" asp-append-version="true"></script>
+    <script type="module" src="~/js/space.js" asp-append-version="true"></script>
+}
