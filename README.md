@@ -90,3 +90,11 @@ Images are from the **SPHEREx** mission (NASA), obtained from the **NASA/IPAC In
 * `fov` now defaults to the cached field. Check it with `python scripts/check_large_field.py` (predicted vs measured
   star position per visit, and 6' vs 15' photometry).
 * The wider field adds context (many more field stars), not resolution: the pixel scale and PSF are the same.
+
+## Deploying (Render)
+
+Render builds the `deploy` branch, which holds only what the Docker image needs (`Dockerfile`, `requirements.txt`, `render.yaml`,
+`api/`, three files of `science/`, and `static_export/`) and no `cache/`, `cache_large/`, tests, scripts or frontend. After any backend
+change (or a new `scripts/export_static.py` run): commit and push to `main`, then run **`scripts/update_deploy.sh`** (`--dry-run`
+to preview, `--squash` to restart the branch's history as one commit). It builds the tree from git objects, never touches your
+working tree, and only fast-forwards `deploy`. Frontend-only pushes to `main` need nothing.
