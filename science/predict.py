@@ -10,7 +10,7 @@ from astropy.coordinates import SkyCoord, get_body_barycentric
 from astropy.time import Time
 
 # Parallax in mas. api/targets.py has no parallax field yet, so it lives here.
-# Barnard's Star: Gaia DR3 value typed from memory - verify with SIMBAD (plx_value) before relying on it.
+# Barnard's Star: 546.976 mas, checked against SIMBAD plx_value (546.9759) on 2026-11-14.
 # Only Barnard's Star is filled in; for the others the parallax shift is < 0.5 arcsec (~0.1 pixel) anyway.
 PARALLAX_MAS = {"barnards-star": 546.976}
 
