@@ -197,3 +197,17 @@ so the test opens it first. The test hosts checked-in exports on 5190
 and tests menu collapse, layout ratios, date modes, zoom/pan, detector/band selection,
 share round-trip and mobile overflow. The browser uses the fallback sky to keep the
 check independent of GPU performance; it does not test Three.js shader appearance.
+
+## Deploying the frontend (Render, second web service)
+
+The frontend runs as its own Render web service built from the `deploy-web` branch, which holds only
+`web/Dockerfile`, `web/.dockerignore` and `web/PlanetX/` (about 300 KiB, no history from main).
+After a frontend change: push to main, then run `scripts/update_deploy_web.sh` (it does nothing if no
+frontend file changed; `--dry-run` shows what it would commit). It never touches `deploy` or main.
+
+- Image: `docker build -t spherex-web web && docker run -e PORT=8080 -p 8080:8080 spherex-web`.
+- Listens on `0.0.0.0:$PORT`. `GET /health` answers `{"status":"ok"}` without calling the science API.
+- The proxy's upstream comes from `SpherexApi:BaseUrl` in `appsettings.json`
+  (`https://spherex-api-cpln.onrender.com/`); override it with the env var `SpherexApi__BaseUrl`.
+- `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` (set in the image) makes the app see Render's HTTPS, so
+  `UseHttpsRedirection` never redirects or loops. `AllowedHosts` is `*`, so a custom domain needs no setting.

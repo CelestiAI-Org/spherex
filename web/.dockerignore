@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+tests/
+**/*.png
+**/*.jpg
+**/*.log
+**/.vs/
+**/.vscode/
+**/node_modules/
