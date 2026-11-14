@@ -62,7 +62,7 @@ void main() {
 const compositeFragment = /* glsl */ `
 uniform sampler2D tScene, tBloom, tFlare, tStreak;
 uniform vec2 uResolution, uStreakTexel;
-uniform float uTime, uExposure, uBloom, uFlare, uStreak, uCA, uGrain, uVignette, uFade, uDesaturate;
+uniform float uTime, uExposure, uBloom, uFlare, uStreak, uCA, uGrain, uVignette, uDesaturate;
 uniform float uZoomBlur, uWarm, uFlash;
 uniform vec2 uZoomCenter;
 varying vec2 vUv;
@@ -132,7 +132,6 @@ void main() {
 
     vec2 d = (uv - 0.5) * vec2(uResolution.x / uResolution.y, 1.0);
     col *= mix(1.0, smoothstep(1.25, 0.25, length(d)), uVignette);
-    col *= uFade;
 
     col = linearToSrgb(col);
     float n = hash12(uv * uResolution + fract(uTime * 7.13) * 100.0) - 0.5;
@@ -182,7 +181,7 @@ export class Post {
             uResolution: { value: new THREE.Vector2(1, 1) }, uStreakTexel: { value: new THREE.Vector2() },
             uTime: { value: 0 }, uExposure: { value: 1 }, uBloom: { value: 0.5 }, uFlare: { value: 0.35 },
             uStreak: { value: 0.12 }, uCA: { value: 1 }, uGrain: { value: 0.035 }, uVignette: { value: 0.55 },
-            uFade: { value: 1 }, uDesaturate: { value: 0 }, uZoomBlur: { value: 0 }, uWarm: { value: 0 },
+            uDesaturate: { value: 0 }, uZoomBlur: { value: 0 }, uWarm: { value: 0 },
             uFlash: { value: 0 }, uZoomCenter: { value: new THREE.Vector2(0.5, 0.5) },
         });
         this.uniforms = this.composite.uniforms;

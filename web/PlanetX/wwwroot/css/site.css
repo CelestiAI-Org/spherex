@@ -1,41 +1,183 @@
-* { box-sizing: border-box; }
-body { margin: 0; font-family: system-ui, sans-serif; }
-[hidden] { display: none !important; }
-.explorer { position: relative; min-height: 100vh; min-height: 100dvh; background: #181818; }
-#sky-scene { position: absolute; inset: 0; }
-#sky-scene canvas { display: block; width: 100%; height: 100%; }
-.explorer-heading { position: absolute; top: 16px; left: 16px; color: white; pointer-events: none; }
-.explorer-heading h1 { font-size: 20px; margin: 0; }
-.target-menu { position: absolute; bottom: 16px; left: 16px; width: min(280px, calc(100% - 32px)); }
-.ui-panel { padding: 16px; border: 1px solid #aaa; background: white; color: #222; }
-#target-panel { max-height: calc(100dvh - 120px); overflow-y: auto; margin-bottom: 8px; }
-h2 { font-size: 18px; }
-#target-form { display: grid; gap: 8px; }
-#target-form label { display: block; }
-#target-form input, #target-form select { width: 100%; }
-input, select, button { font: inherit; padding: 6px 8px; }
-button { cursor: pointer; }
-button:disabled { cursor: default; }
-fieldset { min-width: 0; }
-legend { font-size: 14px; }
-.status { position: absolute; top: 16px; right: 16px; max-width: min(360px, calc(100% - 32px)); }
-.viewer { position: relative; margin-left: 320px; top: 70px; width: calc(100% - 352px); }
-#frame-container { min-height: 240px; border: 1px solid #aaa; margin: 12px 0; }
-.viewer-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-@media (max-width: 640px) {
-    .status { top: 52px; left: 16px; right: auto; }
-    .viewer { margin-left: 16px; width: calc(100% - 32px); }
+/* SPHEREx Explorer: minimal sci-fi glass UI over the sky scene.
+   Selectors match the markup in Views/Home/Index.cshtml; behaviour lives in js/ui.js. */
+
+:root {
+    --bg: #02030b;
+    --ink: #e8eef9;
+    --ink-dim: #9aa8bf;
+    --ink-faint: #66738a;
+    --accent: #8fd3ff;          /* cool cyan: focus, links, labels */
+    --warm: #ffc27a;            /* warm amber: primary action, echoes the accretion disk */
+    --warm-deep: #ff8f4a;
+    --glass: rgba(10, 14, 28, 0.56);
+    --glass-strong: rgba(6, 9, 18, 0.88);   /* science panels: frames, spectra, sliders */
+    --line: rgba(170, 205, 255, 0.16);
+    --line-strong: rgba(170, 205, 255, 0.3);
+    --radius: 14px;
+    --radius-sm: 9px;
+    --shadow: 0 18px 50px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color-scheme: dark;
 }
 
-/* Sky scene: target labels and flight states (set by js/scene). */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
+[hidden] { display: none !important; }
+
+.explorer { position: relative; min-height: 100vh; min-height: 100dvh; background: transparent; }
+#sky-scene { position: absolute; inset: 0; }
+#sky-scene canvas { display: block; width: 100%; height: 100%; }
+
+/* ---------- Title ---------- */
+.explorer-heading { position: absolute; top: 20px; left: 22px; z-index: 2; pointer-events: none; }
+.explorer-heading h1 {
+    margin: 0; font: 600 12px/1 var(--mono); letter-spacing: 0.32em; text-transform: uppercase;
+    color: var(--ink); text-shadow: 0 0 18px rgba(143, 211, 255, 0.35);
+}
+.explorer-heading h1::after {
+    content: ""; display: block; width: 44px; height: 1px; margin-top: 10px;
+    background: linear-gradient(90deg, var(--warm), transparent);
+}
+
+/* ---------- Glass panels ---------- */
+.ui-panel {
+    padding: 18px;
+    background: var(--glass);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+}
+h2 { margin: 0 0 12px; font: 600 11px/1.2 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-dim); }
+
+/* ---------- Target menu ---------- */
+.target-menu { position: absolute; bottom: 20px; left: 20px; z-index: 3; width: min(300px, calc(100% - 40px)); }
+#target-panel {
+    max-height: calc(100dvh - 130px); overflow-y: auto; margin-bottom: 10px;
+    transform-origin: bottom left;
+    transition: opacity 0.35s var(--ease), transform 0.35s var(--ease), display 0.35s allow-discrete;
+}
+#target-panel[hidden] { opacity: 0; transform: translateY(10px) scale(0.98); }
+@starting-style { #target-panel:not([hidden]) { opacity: 0; transform: translateY(10px) scale(0.98); } }
+
+#target-form { display: grid; gap: 10px; }
+#target-form label, legend { display: block; font-size: 11px; letter-spacing: 0.06em; color: var(--ink-dim); margin-bottom: -4px; }
+#target-form input, #target-form select { width: 100%; }
+fieldset { min-width: 0; margin: 0; padding: 10px 12px 12px; display: grid; gap: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+legend { padding: 0 6px; margin: 0; }
+
+input, select, button { font: inherit; color: inherit; }
+input, select {
+    padding: 9px 11px; border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+input::placeholder { color: var(--ink-faint); }
+input:hover, select:hover { border-color: var(--line-strong); }
+input:focus-visible, select:focus-visible {
+    outline: none; border-color: rgba(143, 211, 255, 0.7); background: rgba(143, 211, 255, 0.06);
+    box-shadow: 0 0 0 3px rgba(143, 211, 255, 0.15);
+}
+select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--ink-dim) 50%), linear-gradient(135deg, var(--ink-dim) 50%, transparent 50%); background-position: calc(100% - 16px) 55%, calc(100% - 11px) 55%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 30px; }
+select option { background: #0b1020; color: var(--ink); }
+
+button {
+    padding: 9px 14px; border-radius: var(--radius-sm); cursor: pointer;
+    background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line);
+    transition: transform 0.15s var(--ease), background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.09); border-color: var(--line-strong); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:focus-visible { outline: 2px solid rgba(143, 211, 255, 0.7); outline-offset: 2px; }
+button:disabled { cursor: default; opacity: 0.4; }
+
+/* Primary action: warm, like the accretion disk. */
+#target-form button[type="submit"] {
+    margin-top: 4px; padding: 11px 14px; border: 0;
+    font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px;
+    color: #1b0f05; background: linear-gradient(135deg, var(--warm), var(--warm-deep));
+    box-shadow: 0 8px 26px rgba(255, 143, 74, 0.28);
+}
+#target-form button[type="submit"]:hover { box-shadow: 0 10px 32px rgba(255, 143, 74, 0.42); filter: brightness(1.05); }
+
+#menu-toggle {
+    padding: 9px 16px; border-radius: 999px;
+    font: 600 11px/1 var(--mono); letter-spacing: 0.18em; text-transform: uppercase;
+    background: var(--glass); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    box-shadow: var(--shadow);
+}
+
+/* ---------- Status toast ---------- */
+.status {
+    position: absolute; top: 18px; right: 20px; z-index: 3; margin: 0; padding: 11px 16px;
+    max-width: min(380px, calc(100% - 40px)); font-size: 13px;
+    border-left: 2px solid var(--warm);
+    transition: opacity 0.35s var(--ease), transform 0.35s var(--ease), display 0.35s allow-discrete;
+}
+.status[hidden] { opacity: 0; transform: translateY(-6px); }
+@starting-style { .status:not([hidden]) { opacity: 0; transform: translateY(-6px); } }
+
+/* ---------- Observation viewer (science panel: opaque, high contrast) ---------- */
+.viewer {
+    position: fixed; z-index: 3; top: 64px; right: 20px; bottom: 20px;
+    width: min(620px, calc(100% - 360px)); overflow-y: auto;
+    display: flex; flex-direction: column; gap: 12px;
+    background: var(--glass-strong);
+    transition: opacity 0.45s var(--ease), transform 0.45s var(--ease), display 0.45s allow-discrete;
+}
+.viewer[hidden] { opacity: 0; transform: translateX(16px); }
+@starting-style { .viewer:not([hidden]) { opacity: 0; transform: translateX(16px); } }
+.viewer h2 { margin: 0; color: var(--ink); }
+#back-to-sky { align-self: flex-start; font-size: 12px; letter-spacing: 0.06em; }
+#back-to-sky::before { content: "← "; color: var(--warm); }
+#frame-container {
+    min-height: 240px; margin: 0; border-radius: var(--radius-sm); overflow: hidden;
+    background: #000; border: 1px solid var(--line);
+    display: grid; place-items: center;
+}
+.frame-image { display: block; width: 100%; max-height: 58vh; object-fit: contain; background: #000; }
+.viewer-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.viewer-controls label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-dim); }
+.viewer dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: 13px; }
+.viewer dt { color: var(--ink-dim); }
+.viewer dd { margin: 0; font-family: var(--mono); color: var(--ink); }
+input[type="range"] { padding: 0; accent-color: var(--accent); background: none; border: 0; }
+
+/* Any future science panel (blink, spectrum, band slider) can opt in to the readable surface. */
+.science-panel { background: var(--glass-strong); }
+
+/* ---------- Sky scene overlays (set by js/scene) ---------- */
 .sky-labels { transition: opacity 0.6s ease; }
 .sky-label {
     position: absolute; left: 0; top: 0; white-space: nowrap;
-    font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.08em; text-transform: uppercase;
-    color: rgba(190, 230, 255, 0.75); text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
-    transition: color 0.2s ease;
+    font: 500 10.5px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase;
+    color: rgba(190, 230, 255, 0.72); text-shadow: 0 0 6px rgba(0, 0, 0, 0.95);
+    transition: color 0.2s ease, letter-spacing 0.3s var(--ease);
 }
-.sky-label.is-hover { color: #ffe2b0; }
-.explorer-heading, .target-menu, .status { transition: opacity 0.6s ease, transform 0.6s ease; }
-body.is-flying .target-menu, body.is-flying .explorer-heading { opacity: 0; transform: translateY(8px); pointer-events: none; }
-.frame-image { display: block; width: 100%; height: auto; image-rendering: auto; }
+.sky-label.is-hover { color: var(--warm); letter-spacing: 0.2em; }
+
+.explorer-heading, .target-menu { transition: opacity 0.6s var(--ease), transform 0.6s var(--ease); }
+body.is-flying .target-menu, body.is-flying .explorer-heading, body.is-flying .viewer {
+    opacity: 0; transform: translateY(10px); pointer-events: none;
+}
+
+/* ---------- Small screens ---------- */
+@media (max-width: 900px) {
+    .viewer { left: 20px; right: 20px; width: auto; top: auto; max-height: 62dvh; }
+    body.in-data .target-menu { opacity: 0; pointer-events: none; }
+}
+@media (max-width: 640px) {
+    .explorer-heading { top: 16px; left: 16px; }
+    .status { top: 46px; left: 16px; right: 16px; max-width: none; }
+    .target-menu { left: 16px; bottom: 16px; width: calc(100% - 32px); }
+    .viewer { left: 12px; right: 12px; bottom: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0.01ms !important; }
+}

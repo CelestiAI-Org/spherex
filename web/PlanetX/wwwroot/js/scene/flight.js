@@ -148,10 +148,10 @@ export class Flight {
         if (this.phase === "warp" && !rig.anim) rig.fovTarget = 64 + this.speed * 12;
 
         this.streaks.update(dt, this.speed);
-        rig.shake = this.speed * this.speed * 0.06;
+        rig.shake = this.reducedMotion ? 0 : this.speed * this.speed * 0.06;
         this.flash = Math.max(0, this.flash - dt * 1.6);
         const u = post.uniforms;
-        u.uZoomBlur.value = this.speed * 0.9;
+        u.uZoomBlur.value = this.speed * (this.reducedMotion ? 0.35 : 0.9);
         u.uWarm.value = this.speed * 0.32 + this.flash * 0.25;
         u.uFlash.value = this.flash * this.flash * 1.4;
     }

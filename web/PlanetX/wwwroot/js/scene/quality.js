@@ -3,19 +3,19 @@
 
 export const TIERS = {
     low: {
-        name: "low", pixelRatio: 1, cubeSize: 1024, msaa: 0, bloomLevels: 4,
+        name: "low", pixelRatio: 0.85, cubeSize: 1024, msaa: 0, bloomLevels: 4,
         stars: 0.45, heroStars: 0.6, nebulaLayers: 4, galaxyPoints: 0.35,
         bhSteps: 48, asteroids: 60, dust: 0.4,
         flare: false, streak: false, grain: 0.03, ca: 0.0,
     },
     medium: {
-        name: "medium", pixelRatio: 1.25, cubeSize: 1536, msaa: 0, bloomLevels: 5,
+        name: "medium", pixelRatio: 1, cubeSize: 1536, msaa: 0, bloomLevels: 5,
         stars: 0.75, heroStars: 1, nebulaLayers: 6, galaxyPoints: 0.7,
         bhSteps: 80, asteroids: 140, dust: 0.75,
         flare: true, streak: true, grain: 0.035, ca: 0.6,
     },
     high: {
-        name: "high", pixelRatio: 2, cubeSize: 2048, msaa: 4, bloomLevels: 6,
+        name: "high", pixelRatio: 1.5, cubeSize: 2048, msaa: 4, bloomLevels: 6,
         stars: 1, heroStars: 1, nebulaLayers: 8, galaxyPoints: 1,
         bhSteps: 128, asteroids: 220, dust: 1,
         flare: true, streak: true, grain: 0.035, ca: 1.0,
@@ -30,6 +30,7 @@ export function readParams() {
         forced: TIERS[q] ? q : null,
         fps: params.has("fps"),
         debug: params.has("debug"),
+        reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
     };
 }
 

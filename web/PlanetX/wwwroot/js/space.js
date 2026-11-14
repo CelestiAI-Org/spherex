@@ -92,6 +92,8 @@ function createSpaceScene(renderer) {
     const detected = detectTier(renderer);
     let tier = TIERS[params.forced || detected.tier];
     let scale = 1;
+    let dataMode = false;
+    let lost = false;
 
     const world = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(HOME.fov, innerWidth / innerHeight, 0.1, 8000);
@@ -133,13 +135,15 @@ function createSpaceScene(renderer) {
         resize();
     }
     function resize() {
-        const ratio = Math.min(devicePixelRatio || 1, tier.pixelRatio) * scale;
+        // Behind the data panels the sky renders at 80 % resolution to leave GPU time for the UI.
+        const ratio = Math.min(devicePixelRatio || 1, tier.pixelRatio) * scale * (dataMode ? 0.8 : 1);
         renderer.setPixelRatio(ratio);
         renderer.setSize(innerWidth, innerHeight, false);
         const size = renderer.getDrawingBufferSize(new THREE.Vector2());
         post.setSize(size.x, size.y);
         shared.uPxScale.value = size.y / 1080;
         camera.aspect = innerWidth / innerHeight;
+        rig.fovMul = camera.aspect < 1 ? Math.min(1.5, Math.pow(1 / camera.aspect, 0.45)) : 1;
         camera.updateProjectionMatrix();
     }
     addEventListener("resize", resize);
@@ -175,6 +179,17 @@ function createSpaceScene(renderer) {
         baked: false,
     };
     const flight = new Flight({ rig, state, post, streaks, targets, home: HOME });
+    flight.reducedMotion = params.reducedMotion;
+    if (params.reducedMotion) rig.driftSpeed *= 0.4;
+
+    // If the GPU drops the context (driver reset, too many tabs), swap to the 2D sky.
+    canvas.addEventListener("webglcontextlost", event => {
+        event.preventDefault();
+        lost = true;
+        canvas.remove();
+        hud.remove();
+        startFallback(container);
+    });
     let resolveReady;
     const ready = new Promise(resolve => { resolveReady = resolve; });
 
@@ -184,6 +199,7 @@ function createSpaceScene(renderer) {
     let time = 0;
     let hudTimer = 0;
     function frame(now) {
+        if (lost) return;
         requestAnimationFrame(frame);
         const dt = Math.min((now - last) / 1000, 0.1);
         last = now;
@@ -201,6 +217,10 @@ function createSpaceScene(renderer) {
         shared.uTime.value = time;
         rig.update(dt, time);
         flight.update(dt);
+        if ((flight.phase === "data") !== dataMode) {
+            dataMode = flight.phase === "data";
+            resize();
+        }
         galaxies.update(time);
         blackHole.update(time, camera, post.height);
         debris.update(time, flight.speed);

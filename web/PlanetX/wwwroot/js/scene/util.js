@@ -62,9 +62,3 @@ export const ease = {
 export const clamp01 = x => Math.min(1, Math.max(0, x));
 export const damp = (current, target, lambda, dt) => THREE.MathUtils.lerp(current, target, 1 - Math.exp(-lambda * dt));
 export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-// Places a flat quad so it faces the origin (where the camera lives).
-export function faceOrigin(object) {
-    object.lookAt(0, 0, 0);
-    return object;
-}

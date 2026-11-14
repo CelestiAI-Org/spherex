@@ -17,7 +17,7 @@ export class CameraRig {
         this.pitch = pitch;
         this.fov = fov;
         this.fovTarget = fov;
-        this.baseFov = fov;
+        this.fovMul = 1;                        // >1 on portrait screens so the composition fits
         this.velocity = new THREE.Vector2();
         this.look = new THREE.Vector2();
         this.pointer = new THREE.Vector2();
@@ -158,8 +158,9 @@ export class CameraRig {
         cam.up.set(0, 1, 0);
         cam.lookAt(dir.add(cam.position));
         cam.rotateZ(Math.sin(time * 0.031) * 0.006);
-        if (Math.abs(cam.fov - this.fov) > 1e-3) {
-            cam.fov = this.fov;
+        const fov = Math.min(this.fov * this.fovMul, 100);
+        if (Math.abs(cam.fov - fov) > 1e-3) {
+            cam.fov = fov;
             cam.updateProjectionMatrix();
         }
     }
