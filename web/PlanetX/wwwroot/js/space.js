@@ -46,7 +46,9 @@ Object.assign(document.body.style, { width: "100%", height: "100%", margin: "0",
 Object.assign(container.style, { position: "fixed", inset: "0", width: "100vw", height: "100vh", zIndex: "0", overflow: "hidden" });
 
 // Opening shot: black hole low centre against open sky, Milky Way down the left, hero galaxy upper right.
-const HOME = { ra: 240, dec: -15, fov: 60 };
+const HOME = { ra: 245, dec: -27.5, fov: 60 };
+// Intro: a lower, tighter hero angle on the black hole that eases out to HOME.
+const INTRO = { ra: 239, dec: -32, fov: 40, duration: 9 };
 
 const params = readParams();
 const pickHandlers = new Set();
@@ -101,8 +103,8 @@ function createSpaceScene(renderer) {
         uTime: { value: 0 },
         uPxScale: { value: 1 },
         uTwinkle: { value: 1 },
-        uBhDir: { value: new THREE.Vector3(0, 0, -1) },
-        uBhCull: { value: 2 },
+        uBhPos: { value: new THREE.Vector3(0, 0, -1) },
+        uBhCone: { value: new THREE.Vector2(2, 2) },
     };
     const noise = createNoiseTexture(256);
     const sky = createSky(renderer, tier.cubeSize);
@@ -112,9 +114,9 @@ function createSpaceScene(renderer) {
     const stars = createStars(shared);
     const galaxies = createGalaxies({ uniforms: shared, noise });
     const nebulae = createNebulae({ uniforms: shared, noise });
-    const blackHole = createBlackHole({ skyTexture: sky.texture, noise });
-    shared.uBhDir.value.copy(blackHole.position).normalize();
-    shared.uBhCull.value = Math.cos(3.4 * DEG);
+    const blackHole = createBlackHole({ renderer, skyTexture: sky.texture, noise });
+    shared.uBhPos.value.copy(blackHole.position);
+    shared.uBhCone.value.set(Math.cos(blackHole.lensRadius * 0.75), Math.cos(blackHole.lensRadius * 1.15));
     const debris = createDebris({ uniforms: shared, lightDir: blackHole.position.clone().normalize(), home: radec(HOME.ra, HOME.dec) });
     const streaks = createWarpStreaks();
     const beacons = createBeacons(shared);
@@ -141,6 +143,7 @@ function createSpaceScene(renderer) {
         renderer.setSize(innerWidth, innerHeight, false);
         const size = renderer.getDrawingBufferSize(new THREE.Vector2());
         post.setSize(size.x, size.y);
+        blackHole.setSize(size.x, size.y);
         shared.uPxScale.value = size.y / 1080;
         camera.aspect = innerWidth / innerHeight;
         rig.fovMul = camera.aspect < 1 ? Math.min(1.5, Math.pow(1 / camera.aspect, 0.45)) : 1;
@@ -209,8 +212,11 @@ function createSpaceScene(renderer) {
             state.baked = sky.bakeStep();
             if (!state.baked) return;
             resolveReady();
-            rig.fov = rig.fovTarget = HOME.fov - 8;     // opening: slow pull back while fading in
-            rig.animateTo({ fov: HOME.fov, duration: 6 });
+            // Opening shot: start on the hero angle and drift out to the home view while fading in.
+            rig.yaw = INTRO.ra * DEG;
+            rig.pitch = INTRO.dec * DEG;
+            rig.fov = rig.fovTarget = INTRO.fov;
+            rig.animateTo({ yaw: HOME.ra * DEG, pitch: HOME.dec * DEG, fov: HOME.fov, duration: INTRO.duration, easing: t => 1 - Math.pow(1 - t, 2.4) });
         }
 
         time += dt;
@@ -222,7 +228,6 @@ function createSpaceScene(renderer) {
             resize();
         }
         galaxies.update(time);
-        blackHole.update(time, camera, post.height);
         debris.update(time, flight.speed);
         targets.update(flight.labelsVisible);
 
@@ -232,6 +237,8 @@ function createSpaceScene(renderer) {
         u.uExposure.value = state.exposure;
         u.uDesaturate.value = state.desaturate;
 
+        camera.updateMatrixWorld();
+        blackHole.render(time, camera);
         post.render(world, camera, time);
         governor.update(dt, tier.name);
 

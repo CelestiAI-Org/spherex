@@ -36,8 +36,8 @@ const pointVertex = /* glsl */ `
 attribute vec3 color;
 attribute vec3 star;          // x: size (px at 1080p), y: brightness, z: twinkle phase
 uniform float uTime, uPxScale, uTwinkle, uBoost;
-uniform vec3 uBhDir;
-uniform float uBhCull;
+uniform vec3 uBhPos;
+uniform vec2 uBhCone;       // cos of inner / outer angle of the black hole lensing cone
 varying vec3 vColor;
 varying float vBright;
 void main() {
@@ -50,7 +50,11 @@ void main() {
     float size = star.x * uPxScale * nearBoost;
     float drawn = max(size, 2.0);
     gl_PointSize = drawn;
-    if (dot(normalize(position - cameraPosition), uBhDir) > uBhCull) gl_PointSize = 0.0;
+    // Inside the strong-lensing cone the ray tracer draws its own (bent) stars, so fade these out.
+    float toHole = dot(normalize(position - cameraPosition), normalize(uBhPos - cameraPosition));
+    float lensFade = 1.0 - smoothstep(uBhCone.y, uBhCone.x, toHole);
+    vBright *= lensFade;
+    if (lensFade <= 0.0) gl_PointSize = 0.0;
     // Keep total light constant when a tiny star is drawn larger than its true size.
     vBright = star.y * tw * uBoost * (size * size) / (drawn * drawn) * 2.4 / (1.0 + size * 0.1);
     vColor = color;
