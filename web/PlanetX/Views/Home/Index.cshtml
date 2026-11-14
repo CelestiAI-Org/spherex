@@ -11,7 +11,7 @@
     </header>
 
     <aside class="target-menu" aria-label="Target selection">
-        <div id="target-panel" class="ui-panel">
+        <div id="target-panel" class="ui-panel" hidden>
             <h2>Find a target</h2>
             <form id="target-form">
                 <label for="search-mode">Search by</label>
@@ -39,7 +39,7 @@
                 <button type="submit">Explore</button>
             </form>
         </div>
-        <button id="menu-toggle" type="button" aria-expanded="true" aria-controls="target-panel">☰ Targets</button>
+        <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="target-panel">☰ Targets</button>
     </aside>
 
     <p id="status" class="ui-panel status" role="status" aria-live="polite" hidden></p>

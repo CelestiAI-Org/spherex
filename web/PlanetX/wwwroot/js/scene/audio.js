@@ -411,10 +411,15 @@ export function createSound({ reduced = false, debug = false } = {}) {
         Object.assign(voice, options, { lines, total });
         voice.raw = lines.map(() => null);
         if (disabled) return;
-        Promise.all(lines.map((line, i) => fetch(options.folder + line.file)
-            .then(r => (r.ok ? r.arrayBuffer() : null))
-            .then(data => { voice.raw[i] = data; })
-            .catch(() => {})))
+        // voice.json lists the recordings that exist, so missing lines cause no 404s.
+        fetch(options.folder + "voice.json")
+            .then(r => (r.ok ? r.json() : { files: [] }))
+            .catch(() => ({ files: [] }))
+            .then(({ files = [] }) => Promise.all(lines.map((line, i) => (!files.includes(line.file) ? null
+                : fetch(options.folder + line.file)
+                    .then(r => (r.ok ? r.arrayBuffer() : null))
+                    .then(data => { voice.raw[i] = data; })
+                    .catch(() => {})))))
             .then(() => { voice.fetched = true; decodeVoice(); });
     }
     function decodeVoice() {
