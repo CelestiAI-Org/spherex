@@ -214,8 +214,7 @@ body.is-gated .target-menu, body.is-gated .sound-toggle { z-index: 7; }
 }
 @keyframes gate-breathe { 50% { opacity: 0.55; } }
 body.in-intro .explorer-heading { opacity: 0; }
-body.in-intro .target-menu { opacity: 0.28; }
-body.in-intro .target-menu:hover, body.in-intro .target-menu:focus-within { opacity: 1; }
+body.in-intro .target-menu { display: none; }
 @media (max-width: 640px) { .intro-caption { bottom: 24vh; } }
 @media (prefers-reduced-motion: reduce) { .intro-gate strong { animation: none; } }
 

@@ -74,6 +74,7 @@ if (new URLSearchParams(location.search).get("wiring") !== "off") wireDemo(scene
 
 function createFallbackScene() {
     startFallback(container);
+    document.querySelector(".target-menu").hidden = false;
     return {
         ready: Promise.resolve(),
         quality: "fallback",
@@ -243,6 +244,7 @@ function createSpaceScene(renderer) {
             if (intro.shouldPlay) {
                 intro.start();
             } else {
+            document.querySelector(".target-menu").hidden = false;
             // Opening shot: start on the hero angle and drift out to the home view while fading in.
             rig.yaw = INTRO.ra * DEG;
             rig.pitch = INTRO.dec * DEG;

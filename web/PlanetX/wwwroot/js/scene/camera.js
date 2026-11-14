@@ -1,7 +1,7 @@
 import * as THREE from "./three.js";
 import { damp, ease } from "./util.js";
 
-// Cinematic camera: drag to look (with inertia), slow idle drift, a gentle "breathing"
+// Cinematic camera: grab the sky to look (with inertia), slow idle drift, a gentle "breathing"
 // translation so near stars parallax against far ones, a hint of pointer parallax, and wheel
 // zoom. yaw/pitch are the RA/Dec (radians) of the view direction, so aiming at a target is
 // simply animateTo({ yaw: ra, pitch: dec }).
@@ -34,17 +34,31 @@ export class CameraRig {
         this.pickHandlers = new Set();
         this._forward = new THREE.Vector3();
         this._target = new THREE.Vector3();
+        this._dragAnchor = null;
+        this._dragPointer = new THREE.Vector2();
+        this._dragRay = new THREE.Vector3();
+        this._roll = 0;
         this.bind();
     }
 
     bind() {
         const el = this.element;
-        let dragging = false, lastX = 0, lastY = 0, lastT = 0, downX = 0, downY = 0, downT = 0;
+        let dragging = false, pointerId = null, lastT = 0, downX = 0, downY = 0, downT = 0;
         el.addEventListener("pointerdown", e => {
-            if (e.button !== 0) return;
+            if (e.button !== 0 || dragging) return;
             dragging = true;
-            lastX = downX = e.clientX;
-            lastY = downY = e.clientY;
+            pointerId = e.pointerId;
+            downX = e.clientX;
+            downY = e.clientY;
+            this.setPointer(e);
+            if (this.inputEnabled) {
+                if (this.anim) { this.anim.resolve(false); this.anim = null; }
+                // Capture the actual rendered ray, including pointer lean and camera roll.
+                this._dragAnchor = new THREE.Vector3(this.pointer.x, this.pointer.y, 0.5)
+                    .applyMatrix4(this.camera.projectionMatrixInverse)
+                    .normalize().applyQuaternion(this.camera.quaternion);
+                this._dragPointer.copy(this.pointer);
+            }
             lastT = downT = performance.now();
             this.velocity.set(0, 0);
             this.idle = 0;
@@ -52,28 +66,28 @@ export class CameraRig {
             el.setPointerCapture(e.pointerId);
         });
         el.addEventListener("pointermove", e => {
-            this.pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+            if (dragging && e.pointerId !== pointerId) return;
+            this.setPointer(e);
             if (!dragging) return;
             this.idle = 0;
-            if (!this.inputEnabled) return;
+            if (!this.inputEnabled || !this._dragAnchor) return;
             const now = performance.now();
             const dt = Math.max((now - lastT) / 1000, 1 / 240);
-            const sens = 0.0032 * (this.fov / 60);
-            const dYaw = -(e.clientX - lastX) * sens;
-            const dPitch = -(e.clientY - lastY) * sens;
-            this.yaw += dYaw;
-            this.pitch = THREE.MathUtils.clamp(this.pitch + dPitch, -MAX_PITCH, MAX_PITCH);
+            const yaw = this.yaw, pitch = this.pitch;
+            this._dragPointer.copy(this.pointer);
+            this.followDrag();
             // Smoothed angular velocity for the release fling.
-            this.velocity.lerp(new THREE.Vector2(dYaw / dt, dPitch / dt), 0.4);
-            lastX = e.clientX;
-            lastY = e.clientY;
+            this.velocity.lerp(new THREE.Vector2((this.yaw - yaw) / dt, (this.pitch - pitch) / dt), 0.4);
             lastT = now;
         });
         const end = e => {
-            if (!dragging) return;
+            if (!dragging || e.pointerId !== pointerId) return;
             dragging = false;
+            this._dragAnchor = null;
+            if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+            pointerId = null;
             el.style.cursor = "grab";
-            if (performance.now() - lastT > 80) this.velocity.set(0, 0);
+            if (e.type !== "pointerup" || performance.now() - lastT > 80) this.velocity.set(0, 0);
             const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
             if (e.type === "pointerup" && moved < 6 && performance.now() - downT < 400) {
                 this.pickHandlers.forEach(fn => fn(e.clientX, e.clientY));
@@ -81,6 +95,7 @@ export class CameraRig {
         };
         el.addEventListener("pointerup", end);
         el.addEventListener("pointercancel", end);
+        el.addEventListener("lostpointercapture", end);
         el.addEventListener("wheel", e => {
             if (!this.inputEnabled) return;
             e.preventDefault();
@@ -88,6 +103,39 @@ export class CameraRig {
             this.fovTarget = THREE.MathUtils.clamp(this.fovTarget * Math.exp(e.deltaY * 0.0012), 22, 75);
         }, { passive: false });
         this.dragging = () => dragging;
+    }
+
+    setPointer(e) {
+        const rect = this.element.getBoundingClientRect();
+        this.pointer.set(
+            (e.clientX - rect.left) / rect.width * 2 - 1,
+            1 - (e.clientY - rect.top) / rect.height * 2,
+        );
+    }
+
+    followDrag() {
+        if (!this._dragAnchor || !this.inputEnabled) return;
+        const tan = Math.tan(Math.min(this.fov * this.fovMul, 100) * Math.PI / 360);
+        const ray = this._dragRay.set(
+            this._dragPointer.x * tan * this.camera.aspect,
+            this._dragPointer.y * tan, -1,
+        ).normalize();
+        // Undo the fixed screen roll before solving the upright camera's yaw and pitch.
+        const c = Math.cos(this._roll), s = Math.sin(this._roll), x = ray.x;
+        ray.x = c * x - s * ray.y;
+        ray.y = s * x + c * ray.y;
+        const anchor = this._dragAnchor;
+        const alpha = Math.atan2(ray.y, -ray.z);
+        const elevation = Math.asin(THREE.MathUtils.clamp(anchor.y / Math.hypot(ray.y, ray.z), -1, 1));
+        const current = this.pitch + this.look.y;
+        const nearest = angle => current + Math.atan2(Math.sin(angle - current), Math.cos(angle - current));
+        const p1 = nearest(elevation - alpha), p2 = nearest(Math.PI - elevation - alpha);
+        const pitch = Math.abs(p1 - current) <= Math.abs(p2 - current) ? p1 : p2;
+        this.pitch = THREE.MathUtils.clamp(pitch - this.look.y, -MAX_PITCH, MAX_PITCH);
+        const effectivePitch = this.pitch + this.look.y;
+        const forward = -ray.y * Math.sin(effectivePitch) - ray.z * Math.cos(effectivePitch);
+        const yaw = Math.atan2(ray.x, forward) - Math.atan2(anchor.z, anchor.x) - this.look.x;
+        this.yaw += Math.atan2(Math.sin(yaw - this.yaw), Math.cos(yaw - this.yaw));
     }
 
     onPick(fn) {
@@ -142,9 +190,14 @@ export class CameraRig {
         this.fov = damp(this.fov, this.fovTarget, 6, dt);
 
         // Pointer parallax: the view leans a fraction of a degree toward the cursor.
-        const lean = this.dragging() || a ? 0 : 1;
-        this.look.x = damp(this.look.x, -this.pointer.x * 0.010 * lean, 2.5, dt);
-        this.look.y = damp(this.look.y, this.pointer.y * 0.007 * lean, 2.5, dt);
+        if (!this._dragAnchor) {
+            const lean = this.dragging() || a ? 0 : 1;
+            this.look.x = damp(this.look.x, -this.pointer.x * 0.010 * lean, 2.5, dt);
+            this.look.y = damp(this.look.y, this.pointer.y * 0.007 * lean, 2.5, dt);
+            this._roll = damp(this._roll, Math.sin(time * 0.031) * 0.006, 2.5, dt);
+        }
+        // Re-solve every frame so zooming while dragging keeps the same sky anchor.
+        this.followDrag();
 
         const cp = Math.cos(this.pitch + this.look.y);
         const yaw = this.yaw + this.look.x;
@@ -163,7 +216,7 @@ export class CameraRig {
         }
         cam.up.set(0, 1, 0);
         cam.lookAt(dir.add(cam.position));
-        cam.rotateZ(Math.sin(time * 0.031) * 0.006);
+        cam.rotateZ(this._roll);
         const fov = Math.min(this.fov * this.fovMul, 100);
         if (Math.abs(cam.fov - fov) > 1e-3) {
             cam.fov = fov;
