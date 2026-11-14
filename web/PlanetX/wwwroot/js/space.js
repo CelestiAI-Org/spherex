@@ -1,18 +1,39 @@
 // SPHEREx Explorer sky scene: entry point.
 // Builds the scene, runs the render loop, and exposes `scene` (also window.spherexScene),
-// the integration surface for the UI and data code: flyTo, finish / showFrames, reset, onPick.
+// the integration surface for the UI and data code:
+//
+//   scene.ready                      Promise, resolves once the sky is baked and visible.
+//   scene.flyTo(target, { minDuration = 3.2 })
+//        target: { ra, dec } in degrees, or a Promise of one (e.g. a name lookup).
+//        Starts the warm zoom and resolves after minDuration seconds; the warp keeps
+//        cruising until finish() so slow API calls are hidden.
+//   scene.finish() / scene.showFrames()
+//        Decelerate, arrival flash, dim the sky for the data panels. Resolves on arrival.
+//   scene.reset()                    Fade back to the opening view.
+//   scene.onPick(fn)                 fn({ key, name, ra, dec }) when a target beacon is clicked.
+//                                    Returns an unsubscribe function.
+//   scene.quality / scene.setQuality("low" | "medium" | "high")
+//
+// Typical use:
+//   await Promise.all([scene.flyTo(target), api.getFrames(key)]);
+//   await scene.finish();   // then show the data view
 import * as THREE from "./scene/three.js";
 import { createSky } from "./scene/sky.js";
 import { createStars } from "./scene/stars.js";
 import { createGalaxies } from "./scene/galaxies.js";
 import { createNebulae } from "./scene/nebulae.js";
 import { createBlackHole } from "./scene/blackhole.js";
+import { createDebris } from "./scene/asteroids.js";
+import { createWarpStreaks, createBeacons } from "./scene/warp.js";
+import { createTargetLayer } from "./scene/targets.js";
+import { Flight } from "./scene/flight.js";
+import { wireDemo } from "./scene/wiring.js";
 import { createNoiseTexture } from "./scene/noise.js";
 import { Post } from "./scene/post.js";
 import { CameraRig } from "./scene/camera.js";
 import { TIERS, readParams, detectTier, PerformanceGovernor } from "./scene/quality.js";
 import { startFallback } from "./scene/fallback.js";
-import { DEG, clamp01, damp, radec, sleep } from "./scene/util.js";
+import { DEG, damp, radec, sleep } from "./scene/util.js";
 
 const container = document.getElementById("sky-scene");
 if (!container) {
@@ -45,13 +66,14 @@ function createRenderer() {
 const renderer = createRenderer();
 export const scene = renderer ? createSpaceScene(renderer) : createFallbackScene();
 window.spherexScene = scene;
+if (new URLSearchParams(location.search).get("wiring") !== "off") wireDemo(scene);
 
 function createFallbackScene() {
     startFallback(container);
     return {
         ready: Promise.resolve(),
         quality: "fallback",
-        async flyTo(_target, { minDuration = 2.2 } = {}) { await sleep(minDuration * 1000); return true; },
+        async flyTo(target, { minDuration = 3.2 } = {}) { await Promise.all([target, sleep(minDuration * 1000)]); return true; },
         async finish() { return true; },
         async showFrames() { return true; },
         async reset() { return true; },
@@ -91,10 +113,14 @@ function createSpaceScene(renderer) {
     const blackHole = createBlackHole({ skyTexture: sky.texture, noise });
     shared.uBhDir.value.copy(blackHole.position).normalize();
     shared.uBhCull.value = Math.cos(3.4 * DEG);
-    world.add(blackHole.mesh, stars.group, galaxies.group, nebulae.group);
+    const debris = createDebris({ uniforms: shared, lightDir: blackHole.position.clone().normalize(), home: radec(HOME.ra, HOME.dec) });
+    const streaks = createWarpStreaks();
+    const beacons = createBeacons(shared);
+    world.add(blackHole.mesh, stars.group, galaxies.group, nebulae.group, debris.group, beacons.object, streaks.object);
 
     const post = new Post(renderer, tier);
     const rig = new CameraRig(camera, canvas, { yaw: HOME.ra * DEG, pitch: HOME.dec * DEG, fov: HOME.fov });
+    const targets = createTargetLayer({ beacons, camera });
 
     function applyTier(next) {
         tier = next;
@@ -102,6 +128,7 @@ function createSpaceScene(renderer) {
         galaxies.setTier(tier);
         nebulae.setTier(tier);
         blackHole.setTier(tier);
+        debris.setTier(tier);
         post.setTier(tier);
         resize();
     }
@@ -140,11 +167,14 @@ function createSpaceScene(renderer) {
 
     // --- Scene state.
     const state = {
-        exposure: 0,          // animated toward exposureTarget
+        exposure: 0,          // animated toward exposureTarget at exposureRate
         exposureTarget: 1.0,
-        fade: 1, desaturate: 0,
+        exposureRate: 0.9,
+        desaturate: 0,
+        desaturateTarget: 0,
         baked: false,
     };
+    const flight = new Flight({ rig, state, post, streaks, targets, home: HOME });
     let resolveReady;
     const ready = new Promise(resolve => { resolveReady = resolve; });
 
@@ -170,13 +200,16 @@ function createSpaceScene(renderer) {
         time += dt;
         shared.uTime.value = time;
         rig.update(dt, time);
+        flight.update(dt);
         galaxies.update(time);
         blackHole.update(time, camera, post.height);
+        debris.update(time, flight.speed);
+        targets.update(flight.labelsVisible);
 
-        state.exposure = damp(state.exposure, state.exposureTarget, 0.9, dt);
+        state.exposure = damp(state.exposure, state.exposureTarget, state.exposureRate, dt);
+        state.desaturate = damp(state.desaturate, state.desaturateTarget, 1.5, dt);
         const u = post.uniforms;
         u.uExposure.value = state.exposure;
-        u.uFade.value = state.fade;
         u.uDesaturate.value = state.desaturate;
 
         post.render(world, camera, time);
@@ -190,29 +223,29 @@ function createSpaceScene(renderer) {
     }
     requestAnimationFrame(frame);
 
+    // Picking and hover feedback on the target beacons.
     rig.onPick((x, y) => {
-        pickHandlers.forEach(fn => fn({ x, y }));
+        if (!flight.labelsVisible) return;
+        const target = targets.pick(x, y);
+        if (target) pickHandlers.forEach(fn => fn(target));
+    });
+    canvas.addEventListener("pointermove", e => {
+        if (e.buttons) return;
+        const over = flight.labelsVisible && targets.hover(e.clientX, e.clientY);
+        canvas.style.cursor = over ? "pointer" : "grab";
     });
 
     // Tuning handle for development only: window.spherexScene.debug with ?debug in the URL.
-    const debug = params.debug ? { post, blackHole, rig, state, world } : undefined;
+    const debug = params.debug ? { post, blackHole, rig, state, world, flight } : undefined;
 
     return {
         ready,
         debug,
         get quality() { return tier.name; },
-        // Turn toward a sky position. target: { ra, dec } in degrees.
-        async flyTo(target, { minDuration = 2.2 } = {}) {
-            const turn = rig.animateTo({ yaw: target.ra * DEG, pitch: target.dec * DEG, fov: 38, duration: minDuration });
-            await Promise.all([turn, sleep(minDuration * 1000)]);
-            return true;
-        },
-        async finish() { return true; },
-        async showFrames() { return this.finish(); },
-        async reset() {
-            await rig.animateTo({ yaw: HOME.ra * DEG, pitch: HOME.dec * DEG, fov: HOME.fov, duration: 2 });
-            return true;
-        },
+        flyTo: (target, options) => flight.flyTo(target, options),
+        finish: () => flight.finish(),
+        showFrames: () => flight.finish(),
+        reset: () => flight.reset(),
         onPick(fn) { pickHandlers.add(fn); return () => pickHandlers.delete(fn); },
         setQuality(name) { if (TIERS[name]) { governor.locked = true; applyTier(TIERS[name]); } },
     };

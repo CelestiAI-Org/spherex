@@ -114,9 +114,9 @@ void main() {
         vec3 streak = vec3(0.0);
         for (int i = -7; i <= 7; i++) {
             float w = exp(-abs(float(i)) * 0.32);
-            streak += max(texture2D(tStreak, uv + vec2(float(i) * uStreakTexel.x * 2.0, 0.0)).rgb - 0.25, 0.0) * w;
+            streak += max(texture2D(tStreak, uv + vec2(float(i) * uStreakTexel.x, 0.0)).rgb - 0.25, 0.0) * w;
         }
-        col += streak * vec3(0.45, 0.62, 1.0) * uStreak;
+        col += streak * vec3(0.45, 0.62, 1.0) * uStreak * (1.0 - clamp(uZoomBlur * 2.0, 0.0, 1.0));
     }
 
     col *= uExposure;

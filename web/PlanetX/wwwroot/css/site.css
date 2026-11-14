@@ -26,3 +26,16 @@ legend { font-size: 14px; }
     .status { top: 52px; left: 16px; right: auto; }
     .viewer { margin-left: 16px; width: calc(100% - 32px); }
 }
+
+/* Sky scene: target labels and flight states (set by js/scene). */
+.sky-labels { transition: opacity 0.6s ease; }
+.sky-label {
+    position: absolute; left: 0; top: 0; white-space: nowrap;
+    font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.08em; text-transform: uppercase;
+    color: rgba(190, 230, 255, 0.75); text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
+    transition: color 0.2s ease;
+}
+.sky-label.is-hover { color: #ffe2b0; }
+.explorer-heading, .target-menu, .status { transition: opacity 0.6s ease, transform 0.6s ease; }
+body.is-flying .target-menu, body.is-flying .explorer-heading { opacity: 0; transform: translateY(8px); pointer-events: none; }
+.frame-image { display: block; width: 100%; height: auto; image-rendering: auto; }

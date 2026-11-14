@@ -260,14 +260,20 @@ export function createBlackHole({ skyTexture, noise, ra = 233, dec = -26, distan
             uBeaming: { value: 0.7 },
             uIntensity: { value: 1 },
         },
-        transparent: true,
+        // Drawn in the opaque pass, first (renderOrder -1), with explicit alpha blending:
+        // it then sits right on top of the background and everything else (rocks with
+        // depth, additive stars and nebulae) draws over it.
+        transparent: false,
+        blending: THREE.CustomBlending,
+        blendSrc: THREE.SrcAlphaFactor,
+        blendDst: THREE.OneMinusSrcAlphaFactor,
         depthWrite: false,
         depthTest: false,
     });
     const size = QUAD_HALF * 2 * scale;
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), material);
     mesh.position.copy(position);
-    mesh.renderOrder = 0;      // right after the background; stars and nebulae draw on top
+    mesh.renderOrder = -1;
     mesh.frustumCulled = true;
 
     return {
