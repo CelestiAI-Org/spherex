@@ -113,7 +113,7 @@ void main() {
 
     vec3 bloom = texture2D(tBloom, uv).rgb;
     col += bloom * uBloom;
-    col += vec3(0.75, 0.85, 1.0) * ringLight * 0.06;
+    col += vec3(0.7, 0.82, 1.0) * ringLight * 0.14;
 
     // Pseudo lens flare: ghosts of bright sources mirrored through the frame centre.
     if (uFlare > 0.0) {

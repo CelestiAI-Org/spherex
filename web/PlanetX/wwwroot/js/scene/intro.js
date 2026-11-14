@@ -387,13 +387,13 @@ export function createIntro({ world, rig, state, post, blackHole, debris, flight
         // ---- Ripple: screen-space ring from the star's projection.
         centreScreen.copy(centre).project(rig.camera);
         centreScreen.set(centreScreen.x * 0.5 + 0.5, centreScreen.y * 0.5 + 0.5, 0);
-        const rip = t - 12.3;
+        const rip = t - 12.15;
         rippleOn = rip > 0 && rip < 8 && !reduced;
         if (rippleOn) {
-            rippleRadius = 2.1 * (1 - Math.exp(-rip * 0.42)) + rip * 0.03;
-            const strength = 0.022 * smooth(0, 0.6, rip) * (1 - smooth(4.5, 8, rip));
+            rippleRadius = 0.42 * Math.pow(rip, 0.85);       // crosses the frame in about 3 s, ahead of the shell
+            const strength = 0.034 * smooth(0, 0.4, rip) * (1 - smooth(3.5, 6.5, rip));
             u.uRipple.value.set(centreScreen.x, centreScreen.y, rippleRadius, strength);
-            u.uRippleWidth.value = 0.045 + rip * 0.01;
+            u.uRippleWidth.value = 0.04 + rip * 0.012;
             u.uRippleRefract.value = tier?.name === "low" ? 0 : 1;
             // Dust: once the ring has swept past the screen centre, the field drifts outward and settles.
             const toCentre = Math.hypot((0.5 - centreScreen.x) * innerWidth / innerHeight, 0.5 - centreScreen.y);
