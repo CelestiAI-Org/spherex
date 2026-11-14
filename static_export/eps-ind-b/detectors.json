@@ -1,0 +1,68 @@
+{
+ "target": "eps-ind-b",
+ "name": "Epsilon Indi B",
+ "ra": 331.0966472578766,
+ "dec": -56.800656008888886,
+ "fov_arcmin": 6.0,
+ "frame_shape": [
+  117,
+  117
+ ],
+ "shared_scale": true,
+ "detectors": [
+  {
+   "detector": 1,
+   "n_images": 45,
+   "wavelength_range_um": [
+    0.748,
+    1.103
+   ],
+   "png_url": "/static/eps-ind-b/det1.png"
+  },
+  {
+   "detector": 2,
+   "n_images": 93,
+   "wavelength_range_um": [
+    1.088,
+    1.644
+   ],
+   "png_url": "/static/eps-ind-b/det2.png"
+  },
+  {
+   "detector": 3,
+   "n_images": 94,
+   "wavelength_range_um": [
+    1.612,
+    2.396
+   ],
+   "png_url": "/static/eps-ind-b/det3.png"
+  },
+  {
+   "detector": 4,
+   "n_images": 44,
+   "wavelength_range_um": [
+    2.443,
+    3.78
+   ],
+   "png_url": "/static/eps-ind-b/det4.png"
+  },
+  {
+   "detector": 5,
+   "n_images": 84,
+   "wavelength_range_um": [
+    3.806,
+    4.417
+   ],
+   "png_url": "/static/eps-ind-b/det5.png"
+  },
+  {
+   "detector": 6,
+   "n_images": 93,
+   "wavelength_range_um": [
+    4.401,
+    5.011
+   ],
+   "png_url": "/static/eps-ind-b/det6.png"
+  }
+ ]
+}

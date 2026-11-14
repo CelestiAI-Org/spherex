@@ -21,7 +21,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from api import fallback  # noqa: E402
+from api import detector_frames, fallback, photometry  # noqa: E402
 from api.load_cache import CACHE_DIR, load_cutouts, load_index, target_dir  # noqa: E402
 from api.targets import DEFAULT_FOV_ARCMIN, TARGETS, find_by_name, nearest  # noqa: E402
 try:
@@ -263,3 +263,58 @@ def diff(a: int, b: int, ra: float | None = None, dec: float | None = None, targ
     d = np.asarray(d, dtype=float)
     scale = np.nanpercentile(np.abs(d), 99.5) or 1.0
     return Response(to_png_bytes(0.5 + 0.5 * np.clip(d / scale, -1, 1)), media_type="image/png")
+
+
+@app.get("/spectrum")
+def spectrum(ra: float | None = None, dec: float | None = None, target: str | None = None,
+             exclude_saturated: bool = False):
+    """Flux vs wavelength of the target: aperture photometry in every cutout that contains it.
+
+    `spectrum` is sorted by wavelength; each point has wavelength_um, flux (Jy), flux_err (Jy, statistical
+    only), detector, mjd, saturated (core pixels flagged OVERFLOW: flux is then a biased-low lower limit).
+    """
+    key, t, _ = pick_target(ra, dec, target)
+    if use_static(key):
+        path = STATIC_EXPORT_DIR / key / "spectrum.json"
+        if not path.exists():
+            raise ApiError(404, f"No pre-computed spectrum for {key}")
+        out = json.loads(path.read_text())
+    else:
+        out = dict(photometry.spectrum(key))
+    if exclude_saturated:
+        out["spectrum"] = [p for p in out["spectrum"] if not p["saturated"]]
+        out["n_points"] = len(out["spectrum"])
+    return out
+
+
+@lru_cache(maxsize=8)
+def _detector_stacks(key: str, ra: float, dec: float, fov: float):
+    return detector_frames.stack_by_detector(load_cutouts(key), ra, dec, fov)
+
+
+@app.get("/frames_by_detector")
+def frames_by_detector(ra: float | None = None, dec: float | None = None, target: str | None = None,
+                       fov: float = Query(DEFAULT_FOV_ARCMIN, gt=0, le=60)):
+    """One stacked frame per detector (1-6) on one shared brightness scale, with the wavelength range
+    each detector covers. Detectors without usable data are listed with png_url null and a note."""
+    key, t, _ = pick_target(ra, dec, target)
+    if use_static(key):
+        path = STATIC_EXPORT_DIR / key / "detectors.json"
+        if not path.exists():
+            raise ApiError(404, f"No pre-computed detector frames for {key}")
+        return json.loads(path.read_text())
+    fov = min(fov, cached_fov(key))
+    stacks = _detector_stacks(key, round(t["ra"], 5), round(t["dec"], 5), round(fov, 3))
+    out_dir = RENDER_DIR / key / "detectors"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    items = []
+    for e in stacks:
+        item = {k: v for k, v in e.items() if k != "image"}
+        item["png_url"] = None
+        if e["image"] is not None:
+            (out_dir / f"det{e['detector']}.png").write_bytes(to_png_bytes(e["image"]))
+            item["png_url"] = f"/img/{key}/detectors/det{e['detector']}.png"
+        items.append(item)
+    shape = next((list(e["image"].shape) for e in stacks if e["image"] is not None), None)
+    return {"target": key, "name": t["name"], "ra": t["ra"], "dec": t["dec"], "fov_arcmin": fov,
+            "frame_shape": shape, "shared_scale": True, "detectors": items}

@@ -50,7 +50,16 @@ def main():
                 (d / f"diff_{i}_{i + 1}.png").write_bytes(r.content)
                 body["diffs"].append({"a": i, "b": i + 1, "url": f"/static/{key}/diff_{i}_{i + 1}.png"})
         (d / "frames.json").write_text(json.dumps(body, indent=1))
-        exported[key] = {**t, "frames": len(body["frames"])}
+        # multi-band: spectrum + one frame per detector (served by /spectrum and /frames_by_detector on the server)
+        spec = client.get("/spectrum", params={"target": key}).json()
+        (d / "spectrum.json").write_text(json.dumps(spec, separators=(",", ":")))
+        det = client.get("/frames_by_detector", params={"target": key}).json()
+        for e in det["detectors"]:
+            if e["png_url"]:
+                (d / f"det{e['detector']}.png").write_bytes(client.get(e["png_url"]).content)
+                e["png_url"] = f"/static/{key}/det{e['detector']}.png"
+        (d / "detectors.json").write_text(json.dumps(det, indent=1))
+        exported[key] = {**t, "frames": len(body["frames"]), "spectrum_points": spec["n_points"]}
         print(f"[{key}] exported {len(body['frames'])} frames")
     (OUT / "targets.json").write_text(json.dumps(exported, indent=1))
     print(f"Done: {len(exported)} targets -> {OUT}")

@@ -11,6 +11,7 @@ class Cutout:
     wcs: WCS            # pixel <-> sky coordinates
     mjd: float          # observation time
     detector: int       # 1–6
+    wavelength_um: float | None = None  # central wavelength (um) at the target position, from WCS-WAVE
 
 @dataclass
 class Frame:

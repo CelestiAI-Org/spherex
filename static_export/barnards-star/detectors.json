@@ -1,0 +1,68 @@
+{
+ "target": "barnards-star",
+ "name": "Barnard's Star",
+ "ra": 269.44627154408244,
+ "dec": 4.768199512222222,
+ "fov_arcmin": 6.0,
+ "frame_shape": [
+  117,
+  117
+ ],
+ "shared_scale": true,
+ "detectors": [
+  {
+   "detector": 1,
+   "n_images": 60,
+   "wavelength_range_um": [
+    0.738,
+    1.107
+   ],
+   "png_url": "/static/barnards-star/det1.png"
+  },
+  {
+   "detector": 2,
+   "n_images": 61,
+   "wavelength_range_um": [
+    1.084,
+    1.653
+   ],
+   "png_url": "/static/barnards-star/det2.png"
+  },
+  {
+   "detector": 3,
+   "n_images": 57,
+   "wavelength_range_um": [
+    1.615,
+    2.373
+   ],
+   "png_url": "/static/barnards-star/det3.png"
+  },
+  {
+   "detector": 4,
+   "n_images": 58,
+   "wavelength_range_um": [
+    2.426,
+    3.799
+   ],
+   "png_url": "/static/barnards-star/det4.png"
+  },
+  {
+   "detector": 5,
+   "n_images": 61,
+   "wavelength_range_um": [
+    3.798,
+    4.43
+   ],
+   "png_url": "/static/barnards-star/det5.png"
+  },
+  {
+   "detector": 6,
+   "n_images": 58,
+   "wavelength_range_um": [
+    4.394,
+    5.002
+   ],
+   "png_url": "/static/barnards-star/det6.png"
+  }
+ ]
+}

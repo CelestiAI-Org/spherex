@@ -1,0 +1,68 @@
+{
+ "target": "rw-aurigae",
+ "name": "RW Aurigae",
+ "ra": 76.95659054099606,
+ "dec": 30.401293172222225,
+ "fov_arcmin": 6.0,
+ "frame_shape": [
+  117,
+  117
+ ],
+ "shared_scale": true,
+ "detectors": [
+  {
+   "detector": 1,
+   "n_images": 56,
+   "wavelength_range_um": [
+    0.739,
+    1.12
+   ],
+   "png_url": "/static/rw-aurigae/det1.png"
+  },
+  {
+   "detector": 2,
+   "n_images": 55,
+   "wavelength_range_um": [
+    1.091,
+    1.646
+   ],
+   "png_url": "/static/rw-aurigae/det2.png"
+  },
+  {
+   "detector": 3,
+   "n_images": 55,
+   "wavelength_range_um": [
+    1.611,
+    2.401
+   ],
+   "png_url": "/static/rw-aurigae/det3.png"
+  },
+  {
+   "detector": 4,
+   "n_images": 55,
+   "wavelength_range_um": [
+    2.432,
+    3.849
+   ],
+   "png_url": "/static/rw-aurigae/det4.png"
+  },
+  {
+   "detector": 5,
+   "n_images": 56,
+   "wavelength_range_um": [
+    3.805,
+    4.424
+   ],
+   "png_url": "/static/rw-aurigae/det5.png"
+  },
+  {
+   "detector": 6,
+   "n_images": 56,
+   "wavelength_range_um": [
+    4.4,
+    5.005
+   ],
+   "png_url": "/static/rw-aurigae/det6.png"
+  }
+ ]
+}

@@ -8,7 +8,8 @@
   "pmdec": 10362.394,
   "ra": 269.44627154408244,
   "dec": 4.768199512222222,
-  "frames": 3
+  "frames": 3,
+  "spectrum_points": 349
  },
  "wise-0855-0714": {
   "name": "WISE 0855-0714",
@@ -19,7 +20,8 @@
   "pmdec": 673.2,
   "ra": 133.76783221785826,
   "dec": -7.242903222222222,
-  "frames": 3
+  "frames": 3,
+  "spectrum_points": 254
  },
  "eps-ind-b": {
   "name": "Epsilon Indi B",
@@ -30,7 +32,8 @@
   "pmdec": -2466.832,
   "ra": 331.0966472578766,
   "dec": -56.800656008888886,
-  "frames": 4
+  "frames": 4,
+  "spectrum_points": 425
  },
  "rw-aurigae": {
   "name": "RW Aurigae",
@@ -41,7 +44,8 @@
   "pmdec": -20.33,
   "ra": 76.95659054099606,
   "dec": 30.401293172222225,
-  "frames": 3
+  "frames": 3,
+  "spectrum_points": 330
  },
  "r-draconis": {
   "name": "R Draconis",
@@ -52,6 +56,7 @@
   "pmdec": 6.149,
   "ra": 248.16723223984235,
   "dec": 66.75502440944445,
-  "frames": 3
+  "frames": 3,
+  "spectrum_points": 216
  }
 }

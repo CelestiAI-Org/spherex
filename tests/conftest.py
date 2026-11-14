@@ -16,9 +16,13 @@ sys.path.insert(0, str(ROOT))
 _TMP = Path(tempfile.mkdtemp(prefix="spherex_test_cache_"))
 os.environ["SPHEREX_CACHE_DIR"] = str(_TMP)  # must be set before importing api.*
 
-from api.targets import TARGETS  # noqa: E402
+from api.targets import TARGETS, mjd_to_year, propagate  # noqa: E402
+sys.path.insert(0, str(ROOT / "scripts"))
+import make_fake_cutouts  # noqa: E402
+
 RA, DEC = TARGETS["barnards-star"]["ra"], TARGETS["barnards-star"]["dec"]
 PIX = 6.2 / 3600  # SPHEREx pixel ~6.2 arcsec
+STAR_SUM = 5000.0
 
 
 def make_fake_cache(cache: Path, key="barnards-star", visits=(60000.0, 60180.0, 60360.0), fov=6.0):
@@ -37,14 +41,23 @@ def make_fake_cache(cache: Path, key="barnards-star", visits=(60000.0, 60180.0, 
             y, x = np.mgrid[:n, :n]
             sx = n / 2 + 6 * v  # the "star" moves 6 px per visit
             img += 200 * np.exp(-((x - sx) ** 2 + (y - n / 2) ** 2) / 4)
+            # the "target": a Gaussian star (sigma 1.1 px, summed counts = STAR_SUM) at the target's
+            # proper-motion-propagated position for THIS exposure's time
+            mjd_i = mjd0 + 0.1 * k
+            sra, sdec = propagate(TARGETS[key], mjd_to_year(mjd_i))
+            tx, ty = (float(v) for v in w.all_world2pix(sra, sdec, 0))
+            img += STAR_SUM / (2 * np.pi * 1.1 ** 2) * np.exp(-((x - tx) ** 2 + (y - ty) ** 2) / (2 * 1.1 ** 2))
             hdr = w.to_header()
             hdr["MJD-AVG"] = mjd0 + 0.1 * k
             hdr["DETECTOR"] = 1 + k
+            wkeys, wave_hdu = make_fake_cutouts.wave_wcs(1.0 + 2.0 * k)  # detector 1: ~1 um, detector 2: ~3 um
+            hdr.update(wkeys)
             name = f"fake_{v}_{k}.fits"
             fits.HDUList([fits.PrimaryHDU(),
                           fits.ImageHDU(img, hdr, name="IMAGE"),
                           fits.ImageHDU(np.zeros((n, n), dtype=np.int32), name="FLAGS"),
-                          fits.ImageHDU(np.full((n, n), 100.0), name="ZODI")]).writeto(cache / key / "cutouts" / name, overwrite=True)
+                          fits.ImageHDU(np.full((n, n), 100.0), name="ZODI"),
+                          fits.ImageHDU(np.full((n, n), 4.0, dtype=np.float32), name="VARIANCE"), wave_hdu]).writeto(cache / key / "cutouts" / name, overwrite=True)
             rows.append({"file": name, "mjd": mjd0 + 0.1 * k, "detector": 1 + k})
     (cache / key / "index.json").write_text(json.dumps({"fov_arcmin": fov, "cutouts": rows}))
 

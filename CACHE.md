@@ -49,3 +49,6 @@ Set `SPHEREX_CACHE_DIR=/some/path` to point at a different cache folder.
 * The cache is centred on the **epoch-2026 position** of each target (proper motion applied, see
   `api/targets.py`) - Barnard's Star has moved ~4.5' since J2000.
 * The fake target `fake_mover` (see `scripts/make_fake_cutouts.py`) uses the same layout.
+* `Cutout.wavelength_um` (optional, default None) is filled by `load_cutouts` from `WCS-WAVE` at the target's
+  proper-motion-propagated position (the nearest edge pixel if the target is off-image). See DATA_REPORT.md for
+  how many cutouts per target have one (all but 2-3 edge slivers).

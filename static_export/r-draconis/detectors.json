@@ -1,0 +1,68 @@
+{
+ "target": "r-draconis",
+ "name": "R Draconis",
+ "ra": 248.16723223984235,
+ "dec": 66.75502440944445,
+ "fov_arcmin": 6.0,
+ "frame_shape": [
+  117,
+  117
+ ],
+ "shared_scale": true,
+ "detectors": [
+  {
+   "detector": 1,
+   "n_images": 92,
+   "wavelength_range_um": [
+    0.734,
+    1.123
+   ],
+   "png_url": "/static/r-draconis/det1.png"
+  },
+  {
+   "detector": 2,
+   "n_images": 89,
+   "wavelength_range_um": [
+    1.087,
+    1.651
+   ],
+   "png_url": "/static/r-draconis/det2.png"
+  },
+  {
+   "detector": 3,
+   "n_images": 90,
+   "wavelength_range_um": [
+    1.617,
+    2.401
+   ],
+   "png_url": "/static/r-draconis/det3.png"
+  },
+  {
+   "detector": 4,
+   "n_images": 85,
+   "wavelength_range_um": [
+    2.433,
+    3.811
+   ],
+   "png_url": "/static/r-draconis/det4.png"
+  },
+  {
+   "detector": 5,
+   "n_images": 88,
+   "wavelength_range_um": [
+    3.804,
+    4.423
+   ],
+   "png_url": "/static/r-draconis/det5.png"
+  },
+  {
+   "detector": 6,
+   "n_images": 91,
+   "wavelength_range_um": [
+    4.406,
+    4.993
+   ],
+   "png_url": "/static/r-draconis/det6.png"
+  }
+ ]
+}
