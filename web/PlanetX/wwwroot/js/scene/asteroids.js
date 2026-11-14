@@ -44,10 +44,11 @@ const dustVertex = /* glsl */ `
 attribute vec4 aDust;          // xyz: start position in the wrap box, w: brightness
 uniform float uTime, uPxScale, uBox, uWarp;
 uniform vec3 uDrift;
+uniform vec3 uShock;           // extra displacement from the supernova shockwave
 varying float vAlpha;
 varying vec3 vColor;
 void main() {
-    vec3 p = mod(aDust.xyz + uDrift * uTime - cameraPosition, uBox) - uBox * 0.5;
+    vec3 p = mod(aDust.xyz + uDrift * uTime + uShock - cameraPosition, uBox) - uBox * 0.5;
     vec4 mv = viewMatrix * vec4(cameraPosition + p, 1.0);
     gl_Position = projectionMatrix * mv;
     float dist = -mv.z;
@@ -118,6 +119,7 @@ export function createDebris({ uniforms, lightDir, home }) {
             axis: new THREE.Vector3(random() - 0.5, random() - 0.5, random() - 0.5).normalize(),
             spin: (random() - 0.5) * 0.5,
             phase: random() * 6.28,
+            off: new THREE.Vector3(), vel: new THREE.Vector3(), hit: false, extraSpin: 0, spinAngle: 0,
         });
     }
     const dummy = new THREE.Object3D();
@@ -136,6 +138,7 @@ export function createDebris({ uniforms, lightDir, home }) {
         uBox: { value: BOX },
         uWarp: { value: 0 },
         uDrift: { value: new THREE.Vector3(0.35, 0.08, -0.2) },
+        uShock: { value: new THREE.Vector3() },
     };
     const dustPoints = new THREE.Points(dustGeometry, new THREE.ShaderMaterial({
         vertexShader: dustVertex, fragmentShader: dustFragment,
@@ -154,7 +157,15 @@ export function createDebris({ uniforms, lightDir, home }) {
             meshes.forEach(mesh => { mesh.count = Math.ceil(activeRocks / meshes.length); });
             dustGeometry.setDrawRange(0, Math.floor(DUST * tier.dust));
         },
-        update(time, warp) {
+        // Supernova shock: shock(position) returns an outward unit vector when the shock front
+        // is passing that rock this frame (else null). The rock gets a push and extra tumble,
+        // then drag lets it drift, slow down and settle.
+        resetShock() {
+            for (const r of rocks) { r.off.set(0, 0, 0); r.vel.set(0, 0, 0); r.hit = false; r.extraSpin = 0; r.spinAngle = 0; }
+            dustUniforms.uShock.value.set(0, 0, 0);
+        },
+        setDustShock(v) { dustUniforms.uShock.value.copy(v); },
+        update(time, warp, shock = null, dt = 1 / 60) {
             dustUniforms.uWarp.value = warp;
             for (const r of rocks) {
                 if (r.index >= r.mesh.count) continue;
@@ -162,7 +173,22 @@ export function createDebris({ uniforms, lightDir, home }) {
                 dummy.position.copy(axisA).multiplyScalar(Math.cos(a) * r.radius)
                     .addScaledVector(axisB, Math.sin(a) * r.radius)
                     .addScaledVector(normal, r.height + Math.sin(time * 0.05 + r.phase) * 0.8);
-                dummy.quaternion.setFromAxisAngle(r.axis, r.phase + time * r.spin);
+                if (shock && !r.hit) {
+                    const push = shock(dummy.position);
+                    if (push) {
+                        r.hit = true;
+                        r.vel.copy(push).multiplyScalar(5 + 7 / r.scale);
+                        r.extraSpin = (1.5 + 2.5 / r.scale) * (r.spin < 0 ? -1 : 1);
+                    }
+                }
+                if (r.vel.lengthSq() > 1e-6 || r.extraSpin) {
+                    r.off.addScaledVector(r.vel, dt);
+                    r.vel.multiplyScalar(Math.exp(-0.55 * dt));
+                    r.spinAngle += r.extraSpin * dt;
+                    r.extraSpin *= Math.exp(-0.45 * dt);
+                }
+                dummy.position.add(r.off);
+                dummy.quaternion.setFromAxisAngle(r.axis, r.phase + time * r.spin + r.spinAngle);
                 dummy.scale.setScalar(r.scale);
                 dummy.updateMatrix();
                 r.mesh.setMatrixAt(r.index, dummy.matrix);

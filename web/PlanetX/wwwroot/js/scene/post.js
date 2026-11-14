@@ -65,6 +65,8 @@ uniform vec2 uResolution, uStreakTexel;
 uniform float uTime, uExposure, uBloom, uFlare, uStreak, uCA, uGrain, uVignette, uDesaturate;
 uniform float uZoomBlur, uWarm, uFlash;
 uniform vec2 uZoomCenter;
+uniform vec4 uRipple;        // centre (uv), radius (screen heights), strength
+uniform float uRippleRefract, uRippleWidth;
 varying vec2 vUv;
 ${HASH}
 ${TONEMAP}
@@ -75,7 +77,27 @@ vec3 sceneCA(vec2 uv) {
 }
 void main() {
     vec2 uv = vUv;
-    vec3 col = sceneCA(uv);
+    vec3 col;
+    // Supernova shockwave: a ring that refracts the view as it passes (derivative-of-Gaussian
+    // displacement), with a faint chromatic fringe. Low tier: no refraction, just a soft ring.
+    float ringLight = 0.0;
+    if (uRipple.w > 0.0) {
+        vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
+        vec2 d = (uv - uRipple.xy) * aspect;
+        float dist = length(d);
+        float x = (dist - uRipple.z) / uRippleWidth;
+        float g = exp(-x * x);
+        ringLight = g * uRipple.w * 6.0;
+        if (uRippleRefract > 0.5) {
+            vec2 off = (d / max(dist, 1e-4)) / aspect * (x * g) * uRipple.w;
+            col = vec3(sceneCA(uv - off * 1.25).r, sceneCA(uv - off).g, sceneCA(uv - off * 0.75).b);
+            uv -= off;
+        } else {
+            col = sceneCA(uv);
+        }
+    } else {
+        col = sceneCA(uv);
+    }
 
     // Warp zoom: radial blur toward the flight target.
     if (uZoomBlur > 0.001) {
@@ -91,6 +113,7 @@ void main() {
 
     vec3 bloom = texture2D(tBloom, uv).rgb;
     col += bloom * uBloom;
+    col += vec3(0.75, 0.85, 1.0) * ringLight * 0.06;
 
     // Pseudo lens flare: ghosts of bright sources mirrored through the frame centre.
     if (uFlare > 0.0) {
@@ -183,6 +206,7 @@ export class Post {
             uStreak: { value: 0.12 }, uCA: { value: 1 }, uGrain: { value: 0.035 }, uVignette: { value: 0.55 },
             uDesaturate: { value: 0 }, uZoomBlur: { value: 0 }, uWarm: { value: 0 },
             uFlash: { value: 0 }, uZoomCenter: { value: new THREE.Vector2(0.5, 0.5) },
+            uRipple: { value: new THREE.Vector4(0.5, 0.5, 0, 0) }, uRippleRefract: { value: 1 }, uRippleWidth: { value: 0.05 },
         });
         this.uniforms = this.composite.uniforms;
         this.pass = new FullscreenPass(this.composite);

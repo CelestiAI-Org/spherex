@@ -63,6 +63,7 @@ uniform vec4 uFragAxis[${FRAGMENTS}];// fragment stretch axis and stretch
 uniform float uFragHeat[${FRAGMENTS}];
 uniform int uFragCount;
 uniform float uRockOn, uRockHeat, uEmitOut, uFlicker, uInnerFlare;
+uniform float uDiskFade;        // 0..1, used by the intro to fade the disk in
 varying vec2 vUv;
 ${NOISE3}
 
@@ -468,7 +469,7 @@ void main() {
                 float rh = length(hit.xz);
                 if (rh > DISK_IN * 0.97 && rh < uEmitOut) {
                     vec3 dir = (pos - prev) / max(seg, 1e-5);
-                    vec4 e = disk(hit, dir, uPixelAngle * (travelled + seg * f), abs(dir.y));
+                    vec4 e = disk(hit, dir, uPixelAngle * (travelled + seg * f), abs(dir.y)) * uDiskFade;
                     col += transmit * e.rgb * e.a;
                     transmit *= 1.0 - e.a;
                 }
@@ -492,9 +493,9 @@ void main() {
         }
         // Rays still circling close to the hole when the step budget runs out are absorbed.
         if (!escaped && !captured && 1.0 / max(u, 1e-4) < 2.5) captured = true;
-        col += vec3(1.0, 0.78, 0.5) * glow * 0.025 * uDiskGain;
+        col += vec3(1.0, 0.78, 0.5) * glow * 0.025 * uDiskGain * uDiskFade;
         // The photon-ring glow belongs to rays that skim the photon sphere and get away.
-        if (!captured) col += vec3(1.0, 0.86, 0.68) * ringGlow * 0.4 * uDiskGain;
+        if (!captured) col += vec3(1.0, 0.86, 0.68) * ringGlow * 0.4 * uDiskGain * (0.25 + 0.75 * uDiskFade);
         if (!captured && transmit > 0.02) {
             float ui = max(u, 1e-4);
             vec3 radial = c * e1 + s * e2;
@@ -527,8 +528,9 @@ void main() {
 // Composites the offscreen buffer into the HDR scene, right after the sky background.
 const compositeFragment = /* glsl */ `
 uniform sampler2D tHole;
+uniform float uFade;
 varying vec2 vUv;
-void main() { gl_FragColor = texture2D(tHole, vUv); }`;
+void main() { gl_FragColor = texture2D(tHole, vUv) * uFade; }`;
 
 // Hot-spot orbits: radius, start angle, brightness, length along the orbit (r_s).
 function makeSpots() {
@@ -611,6 +613,7 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
         uEmitOut: { value: DISK_OUT },
         uFlicker: { value: 1 },
         uInnerFlare: { value: 0 },
+        uDiskFade: { value: 1 },
     };
     const lensMaterial = new THREE.ShaderMaterial({
         vertexShader: fullscreenVertex, fragmentShader, uniforms, depthTest: false, depthWrite: false,
@@ -632,7 +635,7 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
     const composite = new THREE.Mesh(fullscreenTriangle(), new THREE.ShaderMaterial({
         vertexShader: fullscreenVertex,
         fragmentShader: compositeFragment,
-        uniforms: { tHole: { value: target.texture } },
+        uniforms: { tHole: { value: target.texture }, uFade: { value: 1 } },
         transparent: false,
         blending: THREE.CustomBlending,
         blendSrc: THREE.OneFactor,
@@ -658,7 +661,8 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
     //           shatters. Shards that reach ~4.5 r_s turn into the disk debris stream, which
     //           spirals in and flares the inner edge.
     const R_START = 14.5, FALL_T = 50, L_MOM = 0.05 * R_START * R_START, K_DEBRIS = 4.3, ROCK_R = 0.36;
-    const asteroidOn = new URLSearchParams(location.search).get("asteroid") !== "off";
+    // Off by default (it is tiny at this scale and flickers as it crosses the disk layers); ?asteroid=on enables it.
+    const asteroidOn = new URLSearchParams(location.search).get("asteroid") === "on";
     const ev = { state: "wait", t: 6, count: 0, phi: 0, phiCam: 0, side: 1, debris: [], shards: [], flare: 0, spawn: 0, r: R_START };
     let seed = 99;
     let maxDebris = DEBRIS;
@@ -846,7 +850,7 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
             toHole.copy(position).sub(camera.position).normalize();
             camera.getWorldDirection(look);
             const halfDiagonal = Math.atan(Math.tan((camera.fov * DEG) / 2) * Math.hypot(1, camera.aspect));
-            const visible = this.enabled && Math.acos(THREE.MathUtils.clamp(look.dot(toHole), -1, 1)) < halfDiagonal + lensAngle;
+            const visible = this.enabled && composite.material.uniforms.uFade.value > 0.001 && Math.acos(THREE.MathUtils.clamp(look.dot(toHole), -1, 1)) < halfDiagonal + lensAngle;
             composite.visible = visible;
             if (!visible) return false;
             uniforms.uTime.value = time;
@@ -864,6 +868,11 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
         get shadowAngle() { return Math.atan(3.2 / DIST_RS); },
         get lensRadius() { return Math.atan(R_SPHERE / DIST_RS); },
         get event() { return ev; },
+        // Intro control: lens fades the whole lensed view in, disk fades the accretion disk in.
+        setFade(lens, disk) {
+            composite.material.uniforms.uFade.value = lens;
+            uniforms.uDiskFade.value = disk;
+        },
         // Development helper: the asteroid's world position (for aiming the camera at it).
         rockWorld() {
             const r = uniforms.uRock.value;

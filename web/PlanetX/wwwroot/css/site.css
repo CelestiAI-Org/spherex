@@ -181,3 +181,31 @@ body.is-flying .target-menu, body.is-flying .explorer-heading, body.is-flying .v
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition-duration: 0.01ms !important; }
 }
+
+/* ---------- Supernova intro (js/scene/intro.js) ---------- */
+.intro-caption {
+    position: fixed; left: 50%; bottom: 13vh; z-index: 4; margin: 0;
+    max-width: min(720px, calc(100% - 48px)); transform: translate(-50%, 8px);
+    font: 300 clamp(15px, 1.9vw, 22px)/1.4 var(--sans); letter-spacing: 0.04em; text-align: center;
+    color: rgba(240, 244, 255, 0.92); text-shadow: 0 0 18px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.8);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.9s var(--ease), transform 0.9s var(--ease);
+}
+.intro-caption.is-on { opacity: 1; transform: translate(-50%, 0); }
+.intro-skip {
+    position: fixed; right: 20px; bottom: 20px; z-index: 5;
+    padding: 9px 16px; border-radius: 999px;
+    font: 600 11px/1 var(--mono); letter-spacing: 0.18em; text-transform: uppercase;
+    background: var(--glass); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    box-shadow: var(--shadow);
+}
+.intro-skip::after { content: "  ESC"; color: var(--ink-faint); }
+.intro-replay {
+    width: 100%; margin-top: 10px; font-size: 12px; letter-spacing: 0.06em;
+    background: transparent; color: var(--ink-dim);
+}
+.intro-replay::before { content: "↻ "; color: var(--warm); }
+body.in-intro .explorer-heading { opacity: 0; }
+body.in-intro .target-menu { opacity: 0.32; }
+body.in-intro .target-menu:hover, body.in-intro .target-menu:focus-within { opacity: 1; }
+@media (max-width: 640px) { .intro-caption { bottom: 22vh; } }

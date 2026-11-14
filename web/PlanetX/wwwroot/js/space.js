@@ -28,6 +28,7 @@ import { createWarpStreaks, createBeacons } from "./scene/warp.js";
 import { createTargetLayer } from "./scene/targets.js";
 import { Flight } from "./scene/flight.js";
 import { wireDemo } from "./scene/wiring.js";
+import { createIntro } from "./scene/intro.js";
 import { createNoiseTexture } from "./scene/noise.js";
 import { Post } from "./scene/post.js";
 import { CameraRig } from "./scene/camera.js";
@@ -137,6 +138,7 @@ function createSpaceScene(renderer) {
         blackHole.setTier(tier);
         debris.setTier(tier);
         post.setTier(tier);
+        intro?.setTier(tier);
         resize();
     }
     function resize() {
@@ -202,6 +204,8 @@ function createSpaceScene(renderer) {
     };
     const flight = new Flight({ rig, state, post, streaks, targets, home: HOME });
     flight.reducedMotion = params.reducedMotion;
+    const intro = createIntro({ world, rig, state, post, blackHole, debris, flight, shared, noise, home: HOME, params });
+    intro.setTier(tier);
     if (params.reducedMotion) rig.swayAmplitude *= 0.4;
 
     // If the GPU drops the context (driver reset, too many tabs), swap to the 2D sky.
@@ -231,24 +235,29 @@ function createSpaceScene(renderer) {
             state.baked = sky.bakeStep();
             if (!state.baked) return;
             resolveReady();
+            if (intro.shouldPlay) {
+                intro.start();
+            } else {
             // Opening shot: start on the hero angle and drift out to the home view while fading in.
             rig.yaw = INTRO.ra * DEG;
             rig.pitch = INTRO.dec * DEG;
             rig.fov = rig.fovTarget = INTRO.fov;
             rig.animateTo({ yaw: HOME.ra * DEG, pitch: HOME.dec * DEG, fov: HOME.fov, duration: INTRO.duration, easing: t => 1 - Math.pow(1 - t, 2.4) });
+            }
         }
 
         time += dt;
         shared.uTime.value = time;
         rig.update(dt, time);
         flight.update(dt);
+        intro.update(dt);
         if ((flight.phase === "data") !== dataMode) {
             dataMode = flight.phase === "data";
             resize();
         }
         galaxies.update(time);
-        debris.update(time, flight.speed);
-        targets.update(flight.labelsVisible);
+        debris.update(time, flight.speed, intro.active ? intro.shockTest : null, dt);
+        targets.update(flight.labelsVisible && !intro.active);
 
         state.exposure = damp(state.exposure, state.exposureTarget, state.exposureRate, dt);
         state.desaturate = damp(state.desaturate, state.desaturateTarget, 1.5, dt);
@@ -278,6 +287,7 @@ function createSpaceScene(renderer) {
 
     // Picking and hover feedback on the target beacons.
     rig.onPick((x, y) => {
+        if (intro.active) { intro.skip(); return; }
         if (!flight.labelsVisible) return;
         const target = targets.pick(x, y);
         if (target) pickHandlers.forEach(fn => fn(target));
@@ -289,16 +299,18 @@ function createSpaceScene(renderer) {
     });
 
     // Tuning handle for development only: window.spherexScene.debug with ?debug in the URL.
-    const debug = params.debug ? { post, blackHole, rig, state, world, flight, governor, hud } : undefined;
+    const debug = params.debug ? { post, blackHole, rig, state, world, flight, governor, hud, intro, debris } : undefined;
 
     return {
         ready,
         debug,
         get quality() { return tier.name; },
-        flyTo: (target, options) => flight.flyTo(target, options),
+        // Any scene action skips the intro first, so it never delays the warm zoom.
+        flyTo: (target, options) => { intro.skip(); return flight.flyTo(target, options); },
         finish: () => flight.finish(),
         showFrames: () => flight.finish(),
-        reset: () => flight.reset(),
+        reset: () => { intro.skip(); return flight.reset(); },
+        replayIntro: () => intro.start(),
         onPick(fn) { pickHandlers.add(fn); return () => pickHandlers.delete(fn); },
         setQuality(name) { if (TIERS[name]) { governor.locked = true; scale = 1; applyTier(TIERS[name]); } },
     };
