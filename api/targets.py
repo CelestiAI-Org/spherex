@@ -18,7 +18,7 @@ _CATALOGUE = {
     "barnards-star": dict(name="Barnard's Star", ra_cat=269.45208, dec_cat=4.69336, epoch_cat=2000.0,
                           pmra=-801.551, pmdec=10362.394),
     "wise-0855-0714": dict(name="WISE 0855-0714", ra_cat=(8 + 55 / 60 + 10.831 / 3600) * 15,
-                           dec_cat=-(7 + 14 / 60 + 42.53 / 3600), epoch_cat=2014.0,
+                           dec_cat=-(7 + 14 / 60 + 42.53 / 3600), epoch_cat=2010.34,  # WISE epoch (MJD 55320), Luhman 2014
                            pmra=-8123.7, pmdec=673.2),
     "eps-ind-b": dict(name="Epsilon Indi B", ra_cat=331.04415, dec_cat=-56.78284, epoch_cat=2000.0,
                       pmra=3981.977, pmdec=-2466.832),
