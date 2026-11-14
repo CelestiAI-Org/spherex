@@ -12,7 +12,8 @@
   702,
   702
  ],
- "upscale": 6,
+ "upscale": 6.0,
+ "image_format": "png",
  "shared_scale": true,
  "stretch": "asinh, 1st-99.95th percentile, shared by all detectors",
  "png_url_color": "/static/wise-0855-0714/detectors_color.png",

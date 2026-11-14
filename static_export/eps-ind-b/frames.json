@@ -3,18 +3,19 @@
  "name": "Epsilon Indi B",
  "ra": 331.0966472578766,
  "dec": -56.800656008888886,
- "fov_arcmin": 6.0,
+ "fov_arcmin": 15.0,
  "pipeline": "science.pipeline",
  "matched_distance_arcmin": 0.0,
  "frame_shape": [
-  117,
-  117
+  293,
+  293
  ],
  "large_shape": [
-  702,
-  702
+  1024,
+  1024
  ],
- "upscale": 6,
+ "upscale": 3.495,
+ "image_format": "webp",
  "stretch": {
   "type": "asinh",
   "black_percentile": 1.0,
@@ -56,40 +57,40 @@
  "frames": [
   {
    "index": 0,
-   "url": "/static/eps-ind-b/0.png",
-   "png_url_large": "/static/eps-ind-b/0.png",
-   "png_url_native": "/static/eps-ind-b/0_native.png",
-   "png_url_color": "/static/eps-ind-b/0_color.png",
+   "url": "/static/eps-ind-b/0.webp",
+   "png_url_large": "/static/eps-ind-b/0.webp",
+   "png_url_native": "/static/eps-ind-b/0_native.webp",
+   "png_url_color": "/static/eps-ind-b/0_color.webp",
    "mjd_start": 60789.85618796,
    "mjd_end": 60836.190477821,
    "n_images": 116
   },
   {
    "index": 1,
-   "url": "/static/eps-ind-b/1.png",
-   "png_url_large": "/static/eps-ind-b/1.png",
-   "png_url_native": "/static/eps-ind-b/1_native.png",
-   "png_url_color": "/static/eps-ind-b/1_color.png",
+   "url": "/static/eps-ind-b/1.webp",
+   "png_url_large": "/static/eps-ind-b/1.webp",
+   "png_url_native": "/static/eps-ind-b/1_native.webp",
+   "png_url_color": "/static/eps-ind-b/1_color.webp",
    "mjd_start": 60946.964777416,
    "mjd_end": 60991.858236571,
-   "n_images": 146
+   "n_images": 145
   },
   {
    "index": 2,
-   "url": "/static/eps-ind-b/2.png",
-   "png_url_large": "/static/eps-ind-b/2.png",
-   "png_url_native": "/static/eps-ind-b/2_native.png",
-   "png_url_color": "/static/eps-ind-b/2_color.png",
+   "url": "/static/eps-ind-b/2.webp",
+   "png_url_large": "/static/eps-ind-b/2.webp",
+   "png_url_native": "/static/eps-ind-b/2_native.webp",
+   "png_url_color": "/static/eps-ind-b/2_color.webp",
    "mjd_start": 61148.845456282,
    "mjd_end": 61164.117615935,
    "n_images": 73
   },
   {
    "index": 3,
-   "url": "/static/eps-ind-b/3.png",
-   "png_url_large": "/static/eps-ind-b/3.png",
-   "png_url_native": "/static/eps-ind-b/3_native.png",
-   "png_url_color": "/static/eps-ind-b/3_color.png",
+   "url": "/static/eps-ind-b/3.webp",
+   "png_url_large": "/static/eps-ind-b/3.webp",
+   "png_url_native": "/static/eps-ind-b/3_native.webp",
+   "png_url_color": "/static/eps-ind-b/3_color.webp",
    "mjd_start": 61305.227572277,
    "mjd_end": 61315.478741768,
    "n_images": 118
@@ -99,17 +100,17 @@
   {
    "a": 0,
    "b": 1,
-   "url": "/static/eps-ind-b/diff_0_1.png"
+   "url": "/static/eps-ind-b/diff_0_1.webp"
   },
   {
    "a": 1,
    "b": 2,
-   "url": "/static/eps-ind-b/diff_1_2.png"
+   "url": "/static/eps-ind-b/diff_1_2.webp"
   },
   {
    "a": 2,
    "b": 3,
-   "url": "/static/eps-ind-b/diff_2_3.png"
+   "url": "/static/eps-ind-b/diff_2_3.webp"
   }
  ]
 }

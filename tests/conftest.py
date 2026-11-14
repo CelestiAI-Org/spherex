@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 _TMP = Path(tempfile.mkdtemp(prefix="spherex_test_cache_"))
-os.environ["SPHEREX_CACHE_DIR"] = str(_TMP)  # must be set before importing api.*
+os.environ["SPHEREX_CACHE_DIR"] = str(_TMP)
+os.environ["SPHEREX_CACHE_LARGE_DIR"] = str(_TMP / "no_large_cache")  # never pick up the real cache_large/  # must be set before importing api.*
 
 from api.targets import TARGETS, mjd_to_year, propagate  # noqa: E402
 sys.path.insert(0, str(ROOT / "scripts"))

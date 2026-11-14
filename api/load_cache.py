@@ -31,9 +31,22 @@ astropy_log.setLevel("WARNING")
 BAD_PIXEL_MASK = sum(1 << b for b in (0, 1, 2, 6, 7, 9, 10, 11, 14, 15, 17, 19, 20, 22, 23, 24, 25, 26, 27, 28))
 
 CACHE_DIR = Path(os.environ.get("SPHEREX_CACHE_DIR", ROOT / "cache"))
+# Optional second cache with larger (15 arcmin) cutouts for the hero targets. A target found here is used
+# instead of the 6 arcmin one; set SPHEREX_USE_LARGE=0 (or call use_large(False)) to force the small cache.
+CACHE_LARGE_DIR = Path(os.environ.get("SPHEREX_CACHE_LARGE_DIR", ROOT / "cache_large"))
+_USE_LARGE = os.environ.get("SPHEREX_USE_LARGE", "1") != "0"
+
+
+def use_large(flag: bool) -> None:
+    global _USE_LARGE
+    _USE_LARGE = flag
 
 
 def target_dir(target_key: str) -> Path:
+    """Where a target's cutouts live: cache_large/<key> if it exists (15 arcmin), else cache/<key> (6 arcmin)."""
+    large = CACHE_LARGE_DIR / target_key
+    if _USE_LARGE and (large / "index.json").exists():
+        return large
     return CACHE_DIR / target_key
 
 
