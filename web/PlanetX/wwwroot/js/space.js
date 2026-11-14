@@ -31,7 +31,7 @@ import { wireDemo } from "./scene/wiring.js";
 import { createNoiseTexture } from "./scene/noise.js";
 import { Post } from "./scene/post.js";
 import { CameraRig } from "./scene/camera.js";
-import { TIERS, readParams, detectTier, PerformanceGovernor } from "./scene/quality.js";
+import { TIERS, ORDER, readParams, detectTier, PerformanceGovernor } from "./scene/quality.js";
 import { startFallback } from "./scene/fallback.js";
 import { DEG, damp, radec, sleep } from "./scene/util.js";
 
@@ -93,7 +93,8 @@ function createSpaceScene(renderer) {
 
     const detected = detectTier(renderer);
     let tier = TIERS[params.forced || detected.tier];
-    let scale = 1;
+    let scale = 1;              // overall render resolution (last resort of the governor)
+    let bhScale = tier.bhScale; // black hole buffer resolution
     let dataMode = false;
     let lost = false;
 
@@ -126,8 +127,10 @@ function createSpaceScene(renderer) {
     const rig = new CameraRig(camera, canvas, { yaw: HOME.ra * DEG, pitch: HOME.dec * DEG, fov: HOME.fov });
     const targets = createTargetLayer({ beacons, camera });
 
-    function applyTier(next) {
+    function applyTier(next, { keepBhScale = false } = {}) {
         tier = next;
+        bhScale = keepBhScale ? Math.min(bhScale, tier.bhScale) : tier.bhScale;
+        blackHole.setResolutionScale(bhScale);
         stars.setTier(tier);
         galaxies.setTier(tier);
         nebulae.setTier(tier);
@@ -151,11 +154,27 @@ function createSpaceScene(renderer) {
     }
     addEventListener("resize", resize);
 
-    const governor = new PerformanceGovernor({
-        locked: Boolean(params.forced),
-        onScale: value => { scale = value; resize(); },
-        onTier: name => applyTier(TIERS[name]),
-    });
+    // One step cheaper each time the frame rate stays low: black hole resolution first (it is
+    // the most expensive pass), then a whole tier, then the overall render resolution.
+    function degrade() {
+        if (bhScale > tier.bhScaleMin + 0.01) {
+            bhScale = Math.max(tier.bhScaleMin, Math.round((bhScale - 0.125) * 1000) / 1000);
+            blackHole.setResolutionScale(bhScale);
+            return `black hole ×${bhScale.toFixed(2)}`;
+        }
+        const index = ORDER.indexOf(tier.name);
+        if (index > 0) {
+            applyTier(TIERS[ORDER[index - 1]], { keepBhScale: true });
+            return `tier → ${tier.name}`;
+        }
+        if (scale > 0.71) {
+            scale = Math.round((scale - 0.15) * 100) / 100;
+            resize();
+            return `render ×${scale.toFixed(2)}`;
+        }
+        return null;
+    }
+    const governor = new PerformanceGovernor({ locked: Boolean(params.forced), onDegrade: degrade });
 
     // --- FPS overlay: Shift+F toggles it, or start with ?fps in the URL.
     const hud = document.createElement("div");
@@ -240,12 +259,19 @@ function createSpaceScene(renderer) {
         camera.updateMatrixWorld();
         blackHole.render(time, camera);
         post.render(world, camera, time);
-        governor.update(dt, tier.name);
+        governor.update(dt);
 
         if (hud.style.display !== "none" && (hudTimer -= dt) <= 0) {
             hudTimer = 0.5;
             const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-            hud.textContent = `${governor.fps.toFixed(0)} fps  ${tier.name}${params.forced ? " (locked)" : ""}\n${size.x}×${size.y} @${scale.toFixed(2)}\n${detected.gpu.slice(0, 40)}`;
+            const hole = blackHole.bufferSize;
+            hud.textContent = [
+                `${governor.fps.toFixed(0)} fps · ${tier.name}${params.forced ? " (locked)" : " (auto)"}`,
+                `render ${size.x}×${size.y} ×${scale.toFixed(2)}`,
+                `black hole ×${bhScale.toFixed(2)} ${hole.x}×${hole.y} · ${tier.bhSteps} steps · ${tier.bhOctaves} oct${blackHole.mesh.visible ? "" : " (off screen)"}`,
+                governor.lastAction ? `last step down: ${governor.lastAction}` : "",
+                detected.gpu.slice(0, 44),
+            ].filter(Boolean).join("\n");
         }
     }
     requestAnimationFrame(frame);
@@ -263,7 +289,7 @@ function createSpaceScene(renderer) {
     });
 
     // Tuning handle for development only: window.spherexScene.debug with ?debug in the URL.
-    const debug = params.debug ? { post, blackHole, rig, state, world, flight } : undefined;
+    const debug = params.debug ? { post, blackHole, rig, state, world, flight, governor, hud } : undefined;
 
     return {
         ready,
@@ -274,6 +300,6 @@ function createSpaceScene(renderer) {
         showFrames: () => flight.finish(),
         reset: () => flight.reset(),
         onPick(fn) { pickHandlers.add(fn); return () => pickHandlers.delete(fn); },
-        setQuality(name) { if (TIERS[name]) { governor.locked = true; applyTier(TIERS[name]); } },
+        setQuality(name) { if (TIERS[name]) { governor.locked = true; scale = 1; applyTier(TIERS[name]); } },
     };
 }

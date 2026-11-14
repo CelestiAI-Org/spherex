@@ -21,11 +21,12 @@ import { DEG, radec } from "./util.js";
 // secondary images and the thin photon ring. Escaping rays sample the same sky cubemap as the
 // background (plus crisp per-pixel stars), so the real sky bends around the hole.
 
-const R_SPHERE = 20;      // integration sphere radius (r_s)
+const R_SPHERE = 16;      // integration sphere radius (r_s); outside it the weak-field result is used
 const B_MAX = 44;         // lensing fades out completely at this impact parameter (r_s)
 const DIST_RS = 26;       // camera distance in r_s: sets the apparent size
 const DISK_IN = 3.0;      // innermost stable circular orbit, 3 r_s for Schwarzschild
-const DISK_OUT = 15.0;
+const DISK_OUT = 13.0;
+const SPOTS = 7;          // bright clumps orbiting in the disk
 
 const fullscreenVertex = /* glsl */ `
 varying vec2 vUv;
@@ -44,6 +45,7 @@ uniform mat3 uBasis;          // local -> world (columns: disk x, disk normal, d
 uniform float uScale;         // world units per r_s
 uniform float uTime, uDPhi, uPixelAngle, uDiskGain, uBeaming, uSpin;
 uniform int uSteps, uOctaves;
+uniform vec4 uSpots[${SPOTS}];   // radius, start angle, brightness, length along the orbit
 varying vec2 vUv;
 ${HASH}
 
@@ -52,6 +54,7 @@ const float B_MAX = ${B_MAX.toFixed(1)};
 const float DISK_IN = ${DISK_IN.toFixed(1)};
 const float DISK_OUT = ${DISK_OUT.toFixed(1)};
 const float TAU = 6.2831853;
+const float CYCLE = 16.0;     // seconds per flow cycle of the turbulence
 
 // Weak-field deflection accumulated while travelling from s0 to s1 along a straight line with
 // impact parameter b (s measured from the point of closest approach).
@@ -101,7 +104,7 @@ vec4 disk(vec3 hit, vec3 v, float footprint, float grazing) {
     // cross-faded so differential rotation never winds the pattern into stripes. Coordinates
     // are stretched along the orbit, so features become long arcs and filaments.
     float omega = uSpin * pow(r, -1.5);
-    float cycle = uTime / 9.0;
+    float cycle = uTime / CYCLE;
     float p1 = fract(cycle), p2 = fract(cycle + 0.5);
     float w = 1.0 - abs(1.0 - 2.0 * p1);
     float u0 = phi / TAU * 4.0;
@@ -111,8 +114,8 @@ vec4 disk(vec3 hit, vec3 v, float footprint, float grazing) {
     for (int o = 0; o < MAX_OCTAVES; o++) {
         if (o >= uOctaves) break;
         vec2 base = vec2(u0 * freq, lr * freq + float(o) * 0.37);
-        float shiftA = omega * p1 * 9.0 * 0.6366 * freq;
-        float shiftB = omega * p2 * 9.0 * 0.6366 * freq;
+        float shiftA = omega * p1 * CYCLE * 0.6366 * freq;
+        float shiftB = omega * p2 * CYCLE * 0.6366 * freq;
         float lod = max(noiseLod(radialPx, 2.6 * freq / r), noiseLod(footprint, 4.0 * freq / (TAU * r)));
         float a = textureLod(uNoise, base - vec2(shiftA, 0.0), lod).r;
         float b = textureLod(uNoise, base - vec2(shiftB, 0.0) + vec2(0.5, 0.31), lod).r;
@@ -128,8 +131,22 @@ vec4 disk(vec3 hit, vec3 v, float footprint, float grazing) {
     fil = smoothstep(0.45, 0.95, fil);
 
     float edgeIn = smoothstep(0.0, 0.025, x);
-    float edgeOut = 1.0 - smoothstep(0.5, 1.0, x);
-    float density = edgeIn * edgeOut * (0.22 + 1.25 * turb * turb + 0.75 * fil);
+    float edgeOut = 1.0 - smoothstep(0.45, 1.0, x);
+    float density = edgeIn * edgeOut * (0.3 + 1.05 * turb * turb + 0.5 * fil);
+
+    // Hot spots: compact clumps of gas, each orbiting at its own Keplerian rate, so light is
+    // visibly carried round the hole (and, through the lensing, over the top of it).
+    float spots = 0.0;
+    for (int i = 0; i < ${SPOTS}; i++) {
+        vec4 sp = uSpots[i];
+        float angle = sp.y + uSpin * pow(sp.x, -1.5) * uTime;
+        float dphi = mod(phi - angle + 3.14159265, TAU) - 3.14159265;
+        float along = dphi * sp.x;                       // distance along the orbit (r_s)
+        float trail = along < 0.0 ? sp.w * 2.2 : sp.w;   // a longer tail behind the clump
+        float d2 = (along * along) / (trail * trail) + pow((r - sp.x) / 0.32, 2.0);
+        spots += sp.z * exp(-d2);
+    }
+    density += spots * 0.6 * edgeIn;
     float rim = exp(-pow((r - DISK_IN) / 0.25, 2.0)) * edgeIn;    // hot inner edge
 
     // Special-relativistic Doppler shift of orbiting gas plus gravitational redshift.
@@ -141,7 +158,7 @@ vec4 disk(vec3 hit, vec3 v, float footprint, float grazing) {
     float beam = mix(1.0, clamp(pow(g, 3.0), 0.05, 7.0), uBeaming);
 
     vec3 color = palette(temp * mix(1.0, g, 0.9) * 1.05);
-    vec3 emission = color * (flux * density * 3.0 + rim * 1.6) * beam * uDiskGain;
+    vec3 emission = (color * (flux * density * 3.0 + rim * 1.6) + palette(temp * g * 1.25) * spots * 2.2) * beam * uDiskGain;
     float alpha = clamp(density * 1.15 + rim * 0.5, 0.0, 0.96);
     return vec4(emission, alpha);
 }
@@ -159,6 +176,8 @@ float haze(vec3 p0, vec3 p1) {
     float r = length(m.xz);
     if (r < DISK_IN || r > DISK_OUT) return 0.0;
     float h = 0.045 * r;
+    // Cheap exit for steps that stay well clear of the glow sheet.
+    if (p0.y * p1.y > 0.0 && min(abs(p0.y), abs(p1.y)) > 3.0 * h) return 0.0;
     float seg = length(p1 - p0);
     float dy = p1.y - p0.y;
     float path = abs(dy) > 1e-3 * seg
@@ -174,9 +193,9 @@ vec3 crispStars(vec3 d) {
     vec3 p = d * scale;
     vec3 c = floor(p);
     vec3 h = hash33(c);
-    if (h.x > 0.3) return vec3(0.0);
+    if (h.x > 0.16) return vec3(0.0);
     vec3 sp = c + 0.25 + h.yzx * 0.5;
-    float radius = max(uPixelAngle * scale * 0.9, 0.02);
+    float radius = max(uPixelAngle * scale * 0.7, 0.015);
     float dist = length(p - sp);
     float m = 0.1 + pow(hash13(c + 3.1), 12.0) * 5.0;
     float t = hash13(c + 9.7);
@@ -280,7 +299,7 @@ void main() {
         }
         // Rays still circling close to the hole when the step budget runs out are absorbed.
         if (!escaped && !captured && 1.0 / max(u, 1e-4) < 2.5) captured = true;
-        col += vec3(1.0, 0.78, 0.5) * glow * 0.035 * uDiskGain;
+        col += vec3(1.0, 0.78, 0.5) * glow * 0.025 * uDiskGain;
         // The photon-ring glow belongs to rays that skim the photon sphere and get away.
         if (!captured) col += vec3(1.0, 0.86, 0.68) * ringGlow * 0.4 * uDiskGain;
         if (!captured && transmit > 0.02) {
@@ -317,6 +336,18 @@ const compositeFragment = /* glsl */ `
 uniform sampler2D tHole;
 varying vec2 vUv;
 void main() { gl_FragColor = texture2D(tHole, vUv); }`;
+
+// Hot-spot orbits: radius, start angle, brightness, length along the orbit (r_s).
+function makeSpots() {
+    const spots = [];
+    let seed = 7;
+    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < SPOTS; i++) {
+        const radius = 3.5 + Math.pow(random(), 1.4) * 6.5;
+        spots.push(new THREE.Vector4(radius, random() * Math.PI * 2, 0.45 + random() * 0.6, 0.7 + random() * 0.9));
+    }
+    return spots;
+}
 
 function fullscreenTriangle() {
     const geometry = new THREE.BufferGeometry();
@@ -361,7 +392,8 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
         uPixelAngle: { value: 0.001 },
         uDiskGain: { value: 0.34 },
         uBeaming: { value: 0.8 },
-        uSpin: { value: 0.22 },       // very slow, stately rotation
+        uSpin: { value: 1.4 },        // orbital angular speed scale: omega = uSpin * r^-1.5 rad/s
+        uSpots: { value: makeSpots() },
     };
     const lensMaterial = new THREE.ShaderMaterial({
         vertexShader: fullscreenVertex, fragmentShader, uniforms, depthTest: false, depthWrite: false,
@@ -409,6 +441,7 @@ export function createBlackHole({ renderer, skyTexture, noise, ra = 233, dec = -
         position,
         enabled: true,
         get resolutionScale() { return resolutionScale; },
+        get bufferSize() { return { x: target.width, y: target.height }; },
         setResolutionScale(value) {
             resolutionScale = THREE.MathUtils.clamp(value, 0.25, 1);
             resizeTarget();

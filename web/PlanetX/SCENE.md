@@ -40,10 +40,22 @@ the real integration is in place.
 
 | Flag / key | Effect |
 | --- | --- |
-| `?quality=low\|medium\|high` | Locks a tier. Otherwise the tier is picked from the GPU name and the governor lowers resolution, then the tier, if the frame rate drops below about 48 fps. |
-| `?fps` or **Shift+F** | FPS, tier and resolution overlay. |
+| `?quality=low\|medium\|high` | Locks a tier. Without it the start tier comes from the GPU name: medium by default, high only for strong discrete GPUs, low for software renderers and phones. |
+| `?fps` or **Shift+F** | Overlay: fps, tier, render resolution, the black hole's buffer size and resolution scale, steps, octaves, and the governor's last step down. |
 | `?debug` | Exposes tuning handles on `spherexScene.debug`. |
 | `?wiring=off` | Turns off the demo wiring. |
+
+## Automatic quality fallback
+
+If the frame rate stays below 45 fps for about 3 seconds, the scene steps down once, waits, then
+checks again. The order is: lower the black hole's resolution scale (to 0.5 or 0.6); then drop one
+tier; then, already on low, lower the overall render resolution (to 0.7). It never steps back up.
+
+| Tier | Black hole resolution scale | RK4 steps per ray | Noise octaves |
+| --- | --- | --- | --- |
+| low | 0.5 | 44 | 2 |
+| medium (default) | 0.6 (down to 0.5) | 64 | 3 |
+| high | 0.85 (down to 0.6) | 110 | 4 |
 
 ## Files
 

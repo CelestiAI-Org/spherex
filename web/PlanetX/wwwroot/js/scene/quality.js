@@ -1,23 +1,26 @@
 // Quality tiers. Geometry is generated once at the highest count needed and lower tiers
 // draw a prefix of it (drawRange), so stepping down at runtime never rebuilds anything.
+// Black hole: bhScale is the resolution of its offscreen ray-traced buffer relative to the
+// screen (the governor may lower it to bhScaleMin), bhSteps the RK4 steps per ray, and
+// bhOctaves the noise octaves in the disk turbulence.
 
 export const TIERS = {
     low: {
         name: "low", pixelRatio: 0.85, cubeSize: 1024, msaa: 0, bloomLevels: 4,
         stars: 0.45, heroStars: 0.6, nebulaLayers: 4, galaxyPoints: 0.35,
-        bhSteps: 48, asteroids: 60, dust: 0.4,
+        bhSteps: 44, bhOctaves: 2, bhScale: 0.5, bhScaleMin: 0.5, asteroids: 60, dust: 0.4,
         flare: false, streak: false, grain: 0.03, ca: 0.0,
     },
     medium: {
         name: "medium", pixelRatio: 1, cubeSize: 1536, msaa: 0, bloomLevels: 5,
         stars: 0.75, heroStars: 1, nebulaLayers: 6, galaxyPoints: 0.7,
-        bhSteps: 80, asteroids: 140, dust: 0.75,
+        bhSteps: 64, bhOctaves: 3, bhScale: 0.6, bhScaleMin: 0.5, asteroids: 140, dust: 0.75,
         flare: true, streak: true, grain: 0.035, ca: 0.6,
     },
     high: {
         name: "high", pixelRatio: 1.5, cubeSize: 2048, msaa: 4, bloomLevels: 6,
         stars: 1, heroStars: 1, nebulaLayers: 8, galaxyPoints: 1,
-        bhSteps: 128, asteroids: 220, dust: 1,
+        bhSteps: 110, bhOctaves: 4, bhScale: 0.85, bhScaleMin: 0.6, asteroids: 220, dust: 1,
         flare: true, streak: true, grain: 0.035, ca: 1.0,
     },
 };
@@ -34,8 +37,8 @@ export function readParams() {
     };
 }
 
-// Guess a starting tier from the GPU name. Integrated and mobile GPUs start at medium/low;
-// the runtime monitor steps down further if the frame rate suffers.
+// Starting tier from the GPU name: medium by default, high only for clearly strong discrete
+// GPUs, low for software renderers and phones. The governor steps down further if needed.
 export function detectTier(renderer) {
     const gl = renderer.getContext();
     let gpu = "";
@@ -46,54 +49,47 @@ export function detectTier(renderer) {
     const g = gpu.toLowerCase();
     const mobile = /android|iphone|ipad|mobile/i.test(navigator.userAgent);
     if (mobile || /swiftshader|llvmpipe|software|mali|adreno|powervr/.test(g)) return { tier: "low", gpu };
-    if (/rtx|gtx 1[06-9]|radeon rx|radeon pro|apple m[1-9] (pro|max|ultra)|arc a7/.test(g)) return { tier: "high", gpu };
+    if (/rtx [2-5]0[6-9]0|rtx a[2-6]000|radeon rx [6-9][7-9]\d\d|apple m[1-9] (max|ultra)/.test(g)) return { tier: "high", gpu };
     return { tier: "medium", gpu };
 }
 
-// Watches frame times and asks for a cheaper setting when the scene can't hold ~50 fps.
-// First it lowers the render resolution, then it drops a tier. It never steps back up,
-// so the scene doesn't oscillate during a presentation.
+// Watches the frame rate. When it stays below `threshold` fps for `sustain` seconds it asks the
+// scene for one step cheaper (onDegrade decides what that means: black hole resolution first,
+// then a tier, then overall resolution). It never steps back up, so a presentation doesn't
+// oscillate, and it waits a moment after each change before judging again.
 export class PerformanceGovernor {
-    constructor({ onScale, onTier, locked }) {
-        this.onScale = onScale;
-        this.onTier = onTier;
+    constructor({ onDegrade, locked = false, threshold = 45, sustain = 3 }) {
+        this.onDegrade = onDegrade;
         this.locked = locked;
-        this.samples = [];
-        this.scale = 1;
-        this.warmup = 3;      // seconds ignored after start and after each change
-        this.badWindows = 0;
+        this.threshold = threshold;
+        this.sustain = sustain;
         this.fps = 60;
+        this.lastAction = "";
+        this.frames = 0;
+        this.elapsed = 0;
+        this.slowFor = 0;
+        this.warmup = 4;          // seconds ignored at start (sky bake, shader compile)
     }
-    reset(warmup = 2.5) {
-        this.samples.length = 0;
-        this.warmup = warmup;
-        this.badWindows = 0;
-    }
-    update(dt, currentTier) {
-        if (dt > 0.25) return;            // tab switch or breakpoint, not a real frame
-        this.samples.push(dt);
-        if (this.samples.length >= 60) {
-            const avg = this.samples.reduce((a, b) => a + b, 0) / this.samples.length;
-            this.fps = 1 / avg;
-            this.samples.length = 0;
-            if (this.warmup > 0 || this.locked) return;
-            this.badWindows = this.fps < 48 ? this.badWindows + 1 : 0;
-            if (this.badWindows >= 2) {
-                this.badWindows = 0;
-                if (this.scale > 0.71) {
-                    this.scale = Math.round((this.scale - 0.15) * 100) / 100;
-                    this.onScale(this.scale);
-                } else {
-                    const index = ORDER.indexOf(currentTier);
-                    if (index > 0) {
-                        this.scale = 1;
-                        this.onTier(ORDER[index - 1]);
-                        this.onScale(this.scale);
-                    }
-                }
-                this.reset();
-            }
+    update(dt) {
+        if (dt > 0.25) return;    // tab switch or breakpoint, not a real frame
+        this.frames++;
+        this.elapsed += dt;
+        if (this.elapsed < 0.5) return;
+        this.fps = this.frames / this.elapsed;
+        const window = this.elapsed;
+        this.frames = 0;
+        this.elapsed = 0;
+        if (this.warmup > 0) {
+            this.warmup -= window;
+            return;
         }
-        this.warmup -= dt;
+        if (this.locked) return;
+        this.slowFor = this.fps < this.threshold ? this.slowFor + window : 0;
+        if (this.slowFor >= this.sustain) {
+            this.slowFor = 0;
+            this.warmup = 2;
+            const action = this.onDegrade();
+            if (action) this.lastAction = action;
+        }
     }
 }
