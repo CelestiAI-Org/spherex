@@ -220,6 +220,10 @@ function createSpaceScene(renderer) {
         lost = true;
         canvas.remove();
         hud.remove();
+        try { intro?.skip(); } catch { /* the 2D sky takes over either way */ }
+        // Settle a camera move that was in progress, so a flight already under way can still finish.
+        if (rig.anim) { rig.anim.resolve(false); rig.anim = null; }
+        document.querySelector(".target-menu").hidden = false;
         startFallback(container);
     });
     let resolveReady;
@@ -313,10 +317,15 @@ function createSpaceScene(renderer) {
         debug,
         get quality() { return tier.name; },
         // Any scene action skips the intro first, so it never delays the warm zoom.
-        flyTo: (target, options) => { intro.skip(); return flight.flyTo(target, options); },
-        finish: () => flight.finish(),
-        showFrames: () => flight.finish(),
-        reset: () => { intro.skip(); return flight.reset(); },
+        // After a GPU context loss the 2D sky has taken over and the flight no longer animates,
+        // so the calls resolve on a timer instead of waiting forever.
+        flyTo: (target, options = {}) => {
+            if (lost) return Promise.all([target, sleep((options.minDuration ?? 3.2) * 1000)]).then(() => true);
+            intro.skip(); return flight.flyTo(target, options);
+        },
+        finish: () => (lost ? Promise.resolve(true) : flight.finish()),
+        showFrames: () => (lost ? Promise.resolve(true) : flight.finish()),
+        reset: () => { if (lost) return Promise.resolve(true); intro.skip(); return flight.reset(); },
         replayIntro: () => intro.start(),
         onPick(fn) { pickHandlers.add(fn); return () => pickHandlers.delete(fn); },
         setQuality(name) { if (TIERS[name]) { governor.locked = true; scale = 1; applyTier(TIERS[name]); } },

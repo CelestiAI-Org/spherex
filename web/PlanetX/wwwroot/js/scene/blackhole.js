@@ -535,6 +535,9 @@ void main() {
 
     // Premultiplied output; alpha fades the lensed sky into the unlensed background at the rim.
     float alpha = inside ? 1.0 : 1.0 - smoothstep(0.82, 1.0, rq);
+    // Guard the half-float buffer: no NaN / Inf (white or black flashes) and nothing near its 65504 limit.
+    if (!(col.r >= 0.0 && col.g >= 0.0 && col.b >= 0.0 && col.r + col.g + col.b < 1e30)) col = vec3(0.0);
+    col = min(col, vec3(1e3));
     gl_FragColor = vec4(col * alpha, alpha);
 }`;
 

@@ -10,11 +10,31 @@ export function wireDemo(scene) {
     const status = document.getElementById("status");
     const viewer = document.getElementById("viewer");
     const observation = createViewer();
-    const request = async (endpoint, params) => {
-        const response = await fetch(`/api/spherex/${endpoint}?${new URLSearchParams(params)}`);
-        if (!response.ok) throw new Error((await response.json()).error || `HTTP ${response.status}`);
+    // The free API sleeps when idle and takes up to a minute to wake. A gateway error or timeout
+    // (502/503/504, or no response) is retried once, with a note in the status line.
+    const request = async (endpoint, params, retry = true) => {
+        let response;
+        try {
+            response = await fetch(`/api/spherex/${endpoint}?${new URLSearchParams(params)}`);
+        } catch (error) {
+            if (!retry) throw new Error("Cannot reach the server. Check the connection and try again.");
+        }
+        if (!response || [502, 503, 504].includes(response.status)) {
+            if (retry) {
+                status.textContent = "Waking the SPHEREx data service, this can take up to a minute…";
+                status.hidden = false;
+                await new Promise(r => setTimeout(r, 1500));
+                return request(endpoint, params, false);
+            }
+        }
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${response.status}`);
+        }
         return response.json();
     };
+    // Start waking the API now, so it is up by the time the intro ends or a target is chosen.
+    fetch("/api/spherex/health").catch(() => {});
     // Only ask for band images where the API has them (avoids a 404 per target without bands).
     let catalogue = null;
     const hasBands = async key => {
@@ -86,7 +106,7 @@ export function wireDemo(scene) {
         } catch (error) {
             if (error?.name === "AbortError") return;
             say(/HTTP 404/.test(error.message) ? `Could not find "${label}". Try another name or RA / Dec.` : `Could not reach ${label}: ${error.message}`);
-            await scene.reset();
+            scene.reset();      // not awaited, so a new search is accepted straight away
         } finally {
             busy = false;
         }

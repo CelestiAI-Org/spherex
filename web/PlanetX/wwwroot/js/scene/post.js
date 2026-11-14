@@ -16,12 +16,13 @@ uniform vec2 uTexel;
 uniform float uThreshold, uKnee;
 uniform bool uPrefilter;
 varying vec2 vUv;
-// Drop NaN / Inf / absurdly bright samples before they spread through the bloom chain
-// (they showed up as random white blocks in bloom, flare and streak).
+// Drop NaN / Inf / negative samples before they spread through the bloom chain (they showed up
+// as random white blocks in bloom, flare and streak). Very bright samples are clamped, not
+// dropped, so a highlight crossing the limit doesn't pop in and out of the bloom.
 vec3 s(vec2 o) {
     vec3 c = texture2D(tSrc, vUv + uTexel * o).rgb;
-    if (!(c.r >= 0.0 && c.g >= 0.0 && c.b >= 0.0 && c.r < 64.0 && c.g < 64.0 && c.b < 64.0)) c = vec3(0.0);
-    return c;
+    if (!(c.r >= 0.0 && c.g >= 0.0 && c.b >= 0.0 && c.r + c.g + c.b < 1e30)) c = vec3(0.0);
+    return min(c, vec3(64.0));
 }
 vec3 prefilter(vec3 c) {
     float br = max(c.r, max(c.g, c.b));
@@ -148,6 +149,9 @@ void main() {
         col += streak * vec3(0.45, 0.62, 1.0) * uStreak * (1.0 - clamp(uZoomBlur * 2.0, 0.0, 1.0));
     }
 
+    // A NaN / Inf pixel would show as a black or white speck: replace it before tone mapping.
+    if (!(col.r >= 0.0 && col.g >= 0.0 && col.b >= 0.0 && col.r + col.g + col.b < 1e30)) col = vec3(0.0);
+    col = min(col, vec3(1e3));
     col *= uExposure;
     col += uFlash * vec3(1.0, 0.92, 0.8);
     col = acesFilm(col);
