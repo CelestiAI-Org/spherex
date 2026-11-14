@@ -1,16 +1,5 @@
-import { api, CACHED_TARGETS } from "../api.js";
+import { createViewer } from "../viewer.js";
 import { findTarget } from "./targets.js";
-
-// DEMO GLUE, so the warm zoom can be seen working before the real integration lands.
-// It listens to the existing target form (ui.js is untouched) and drives the public scene
-// contract exactly as the UI code would:
-//   await Promise.all([scene.flyTo(target), dataRequest]);  await scene.finish();  ...  scene.reset();
-// Disable it with ?wiring=off, and delete this file once the real UI integration exists.
-
-function mjdToDate(mjd) {
-    if (!Number.isFinite(mjd)) return "—";
-    return new Date((mjd - 40587) * 86400000).toISOString().slice(0, 10);
-}
 
 export function wireDemo(scene) {
     const form = document.getElementById("target-form");
@@ -20,7 +9,12 @@ export function wireDemo(scene) {
     const decInput = document.getElementById("dec");
     const status = document.getElementById("status");
     const viewer = document.getElementById("viewer");
-    const frameBox = document.getElementById("frame-container");
+    const observation = createViewer();
+    const request = async (endpoint, params) => {
+        const response = await fetch(`/api/spherex/${endpoint}?${new URLSearchParams(params)}`);
+        if (!response.ok) throw new Error((await response.json()).error || `HTTP ${response.status}`);
+        return response.json();
+    };
     const back = document.getElementById("back-to-sky");
     if (!form || !mode || !status || !viewer) return;
 
@@ -45,27 +39,35 @@ export function wireDemo(scene) {
                 key = known.key;
                 target = known;
             } else {
-                target = api.resolveName(text).then(r => {
-                    if (r.key && CACHED_TARGETS.includes(r.key)) key = r.key;
+                target = request("resolve", { name: text }).then(r => {
+                    if (r.key) key = r.key;
                     return { ra: r.ra, dec: r.dec, name: r.name || text };
                 });
             }
         }
 
         busy = true;
-        viewer.hidden = true;
+        observation.close();
+        document.getElementById("target-panel").hidden = true;
+        document.getElementById("menu-toggle").setAttribute("aria-expanded", "false");
         say(`Travelling to ${label}…`);
         // The data request runs during the flight; the flight hides however long it takes.
         const data = (async () => {
             await target;
-            return key ? api.getFrames(key) : null;
+            if (!key) return { frames: null, extras: {} };
+            const [frames, ...extras] = await Promise.all([
+                request("frames", { target: key }),
+                ...["spectrum", "frames_by_detector", "frames_by_band"].map(endpoint =>
+                    request(endpoint, { target: key }).catch(() => null))
+            ]);
+            return { frames, extras: { spectrum: extras[0], detectors: extras[1], bands: extras[2] } };
         })();
         try {
             await Promise.all([scene.flyTo(target, { minDuration: 3.4 }), data]);
             await scene.finish();
-            const frames = await data;
-            showViewer(label, frames);
-            say(frames ? `${label}: ${frames.frames.length} SPHEREx frames loaded.` : `Arrived at ${label}. No cached SPHEREx frames for this position.`);
+            const { frames, extras } = await data;
+            observation.open(label, key, frames, extras);
+            say(frames ? "" : `No cached SPHEREx frames for ${label}.`);
         } catch (error) {
             if (error?.name === "AbortError") return;
             say(`Could not reach ${label}: ${error.message}`);
@@ -75,27 +77,19 @@ export function wireDemo(scene) {
         }
     });
 
-    function showViewer(label, frames) {
-        const dds = viewer.querySelectorAll("dd");
-        if (dds[1]) dds[1].textContent = label;
-        if (dds[0]) dds[0].textContent = frames ? mjdToDate(frames.frames[0].mjd_start) : "—";
-        if (frameBox) {
-            frameBox.replaceChildren();
-            if (frames) {
-                const img = document.createElement("img");
-                img.src = frames.frames[0].url;
-                img.alt = `SPHEREx frame of ${label}`;
-                img.className = "frame-image";
-                frameBox.appendChild(img);
-            }
-        }
-        viewer.hidden = false;
-    }
-
     back?.addEventListener("click", () => {
         say("");
+        observation.close();
         scene.reset();
     });
+
+    const sharedTarget = new URL(location.href).searchParams.get("target");
+    if (sharedTarget) {
+        nameInput.value = sharedTarget;
+        mode.value = "name";
+        mode.dispatchEvent(new Event("change"));
+        form.requestSubmit();
+    }
 
     // Clicking a target beacon in the sky searches for it.
     scene.onPick(target => {
