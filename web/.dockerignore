@@ -7,3 +7,5 @@ tests/
 **/.vs/
 **/.vscode/
 **/node_modules/
+# the offline copy's PNG frames (6' targets) are needed in the image
+!static_export/**/*.png

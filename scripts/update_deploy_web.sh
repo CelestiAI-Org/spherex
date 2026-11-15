@@ -6,8 +6,9 @@
 #   scripts/update_deploy_web.sh --no-push    # commit locally only (e.g. to test a fresh clone first)
 #   scripts/update_deploy_web.sh --from=<ref> # use another source ref instead of origin/main
 #
-# `deploy-web` holds only web/Dockerfile, web/.dockerignore and web/PlanetX/ (no bin/obj). It never contains cache/,
-# cache_large/, static_export/, api/, science/, tests or FITS files, so Render's clone is tiny.
+# `deploy-web` holds only web/Dockerfile, web/.dockerignore, web/PlanetX/ (no bin/obj) and web/static_export/: a copy
+# of the repo's static_export/ (~19 MB, without before/, fov6/ and *.html) that the proxy serves as the offline copy of
+# the API when it is asleep or down. It never contains cache/, cache_large/, api/, science/, tests or FITS files.
 #
 # The tree is built from git objects only: your working directory, your current branch and main are never touched.
 # The first run creates an orphan branch; later runs add a commit on top (a fast-forward push, never a force-push).
@@ -48,9 +49,12 @@ TMP_INDEX=$(mktemp -u)
 trap 'rm -f "$TMP_INDEX"' EXIT
 export GIT_INDEX_FILE="$TMP_INDEX"
 git ls-tree -r "$SRC_SHA" | awk -F'\t' -v inc="$INCLUDE" -v exc="$EXCLUDE" '$2 ~ inc && $2 !~ exc' | git update-index --index-info
+# The offline copy: static_export/** -> web/static_export/** (inside the web/ Docker build context).
+git ls-tree -r "$SRC_SHA" -- static_export | awk -F'\t' '$2 !~ /\/(before|fov6)\/|[.]html$/ { print $1 "\tweb/" $2 }' | git update-index --index-info
 NOTE=$(printf '%s\n' \
   '# deploy-web branch (auto-generated)' '' \
-  'Frontend files only (web/PlanetX + web/Dockerfile), for the Render frontend Docker service.' \
+  'Frontend files only (web/PlanetX + web/Dockerfile + web/static_export, the offline copy of the API), for the' \
+  'Render frontend Docker service.' \
   'Do not edit here: change main, then run `scripts/update_deploy_web.sh`.' '' \
   'The main commit each deploy came from is in the commit message, not in any file, so a main commit that changes' \
   'no frontend file leaves this tree identical and the script does nothing (no needless Render rebuild).' | git hash-object -w --stdin)
@@ -64,14 +68,15 @@ if echo "$FILES" | grep -qE "$BAD"; then
   echo "$FILES" | grep -E "$BAD" | head >&2; exit 1
 fi
 for need in web/Dockerfile web/.dockerignore web/PlanetX/PlanetX.csproj web/PlanetX/Program.cs \
-            web/PlanetX/wwwroot/js/space.js web/PlanetX/wwwroot/audio/voice/voice.json; do
+            web/PlanetX/wwwroot/js/space.js web/PlanetX/wwwroot/audio/voice/voice.json \
+            web/static_export/barnards-star/frames.json web/static_export/r-draconis/frames.json; do
   echo "$FILES" | grep -qx "$need" || { echo "ABORT: $need is missing from the deploy-web tree" >&2; exit 1; }
 done
 TREE=$(git write-tree)
 unset GIT_INDEX_FILE
 N=$(echo "$FILES" | wc -l)
 BYTES=$(git ls-tree -r -l "$TREE" | awk '{s+=$4} END{print s}')
-echo "deploy-web tree: $N files, $((BYTES / 1024)) KiB (source main@${SRC_SHA:0:9})"
+echo "deploy-web tree: $N files, $((BYTES / 1024)) KiB (source main@${SRC_SHA:0:9}), of which offline copy: $(echo "$FILES" | grep -c '^web/static_export/') files"
 
 # --- parent: the previous deploy-web tip (so pushes are plain fast-forwards) ---------------------------
 PARENT=""

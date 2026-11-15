@@ -10,6 +10,9 @@ RUN dotnet publish PlanetX/PlanetX.csproj -c Release -o /app --no-restore -p:Use
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine
 WORKDIR /app
 COPY --from=build /app .
+# Offline copy of the science API (cached targets' JSON + images). Filled in the deploy-web branch by
+# scripts/update_deploy_web.sh; on main the folder holds only a README, so the proxy then has no offline copy.
+COPY static_export/ ./static_export/
 # Render sets PORT; listen on 0.0.0.0:$PORT (8080 locally). Render terminates HTTPS and sends
 # X-Forwarded-Proto/For, which ASPNETCORE_FORWARDEDHEADERS_ENABLED applies, so the app sees
 # https requests and UseHttpsRedirection never loops. The API URL can be overridden with SpherexApi__BaseUrl.

@@ -10,3 +10,6 @@ bin
 
 *.log
 .DS_Store
+# filled by scripts/update_deploy_web.sh in the deploy-web branch only
+web/static_export/*
+!web/static_export/README.md
