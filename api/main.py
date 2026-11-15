@@ -4,6 +4,7 @@
 
 Cached data first, always: requests never trigger a live download.
 """
+import importlib
 import json
 import logging
 import os
@@ -11,25 +12,52 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
-import numpy as np
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from api import display, fallback, photometry  # noqa: E402
-from api.load_cache import CACHE_DIR, load_cutouts, load_index, target_dir  # noqa: E402
-from science.types import Frame  # noqa: E402
-from api.targets import DEFAULT_FOV_ARCMIN, TARGETS, find_by_name, nearest  # noqa: E402
-try:
-    from science import pipeline  # noqa: E402
-except Exception as _e:  # noqa: BLE001  (e.g. a missing dependency): the API must still start
-    logging.getLogger("api").exception("science.pipeline could not be imported, using fallback only: %s", _e)
-    pipeline = None
+# Startup must stay cheap: Render's free plan sleeps the service when idle, and every wake pays the import
+# time. numpy, astropy, reproject/dask, scipy and the science code are imported on first use, by the
+# endpoints that need them (on the deployed server, with SPHEREX_PREFER_STATIC=1, most never do).
+from api.load_cache import CACHE_DIR, load_cutouts, load_index, target_dir  # noqa: E402  (light: no astropy at import)
+from api.targets import DEFAULT_FOV_ARCMIN, TARGETS, find_by_name, nearest  # noqa: E402  (pure Python)
+
+
+class _LazyModule:
+    """Stands in for a module and imports it on first attribute access."""
+
+    def __init__(self, name: str):
+        self._name, self._mod = name, None
+
+    def __getattr__(self, attr):
+        if self._mod is None:
+            self._mod = importlib.import_module(self._name)
+        return getattr(self._mod, attr)
+
+
+np = _LazyModule("numpy")
+display = _LazyModule("api.display")
+fallback = _LazyModule("api.fallback")
+photometry = _LazyModule("api.photometry")
+
+_UNLOADED = object()
+pipeline = _UNLOADED  # science.pipeline, imported by _get_pipeline() on first use (None if it cannot be)
+
+
+def _get_pipeline():
+    global pipeline
+    if pipeline is _UNLOADED:
+        try:
+            pipeline = importlib.import_module("science.pipeline")
+        except Exception as e:  # noqa: BLE001  (e.g. a missing dependency): the API must still work
+            logging.getLogger("api").exception("science.pipeline could not be imported, using fallback only: %s", e)
+            pipeline = None
+    return pipeline
+
 
 log = logging.getLogger("api")
 RENDER_DIR = CACHE_DIR / "rendered"
@@ -75,6 +103,7 @@ def build_frames(cutouts, ra, dec, fov):
     `error` says why.
     """
     error = None
+    pipeline = _get_pipeline()
     try:
         if pipeline is None:
             raise NotImplementedError("science.pipeline not importable")
@@ -94,6 +123,7 @@ def build_frames(cutouts, ra, dec, fov):
 
 
 def difference(a, b):
+    pipeline = _get_pipeline()
     try:
         if pipeline is None:
             raise NotImplementedError
@@ -165,8 +195,17 @@ def pick_target(ra, dec, target):
 
 # ---------- endpoints ----------
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
+    """Liveness for Render and the keep-alive pingers: no imports, no disk access, answers instantly.
+    HEAD is allowed because uptime monitors (e.g. UptimeRobot's default) use it."""
+    return {"status": "ok"}
+
+
+@app.get("/status")
+def status():
+    """Diagnostics (what /health used to return): which pipeline is active and which targets are served.
+    Slower than /health: it may import science.pipeline and reads the cache folders."""
     return {"status": "ok",
             "pipeline": "science.pipeline" if _pipeline_ready() else "fallback",
             "cached_targets": [k for k in TARGETS if load_index(k)],
@@ -175,6 +214,7 @@ def health():
 
 
 def _pipeline_ready() -> bool:
+    pipeline = _get_pipeline()
     if pipeline is None:
         return False
     try:
@@ -313,6 +353,7 @@ def diff(a: int, b: int, ra: float | None = None, dec: float | None = None, targ
     rend = display_for(key, ra_c, dec_c, fov_c) if source == "science.pipeline" else None
     if rend and len(rend.epochs) == len(frs):
         # difference of the UNCLIPPED stacks (the 0-1 frames have clipped stars), through the pipeline's difference()
+        from science.types import Frame
         fa, fb = (Frame(image=rend.raw_epochs[i], mjd_start=frs[i].mjd_start, mjd_end=frs[i].mjd_end,
                         n_images=frs[i].n_images) for i in (a, b))
         d, _ = difference(fa, fb)

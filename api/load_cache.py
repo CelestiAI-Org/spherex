@@ -10,20 +10,20 @@ import os
 import sys
 from pathlib import Path
 
-import numpy as np
-from astropy import log as astropy_log
-from astropy.io import fits
-from astropy.wcs import WCS
+# numpy and astropy are imported inside the functions that read FITS files, so that importing this module
+# (which the API does at startup for the paths and load_index) stays cheap.
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:  # so `science` imports work from anywhere
     sys.path.insert(0, str(ROOT))
 
 from api.targets import TARGETS, mjd_to_year, propagate  # noqa: E402
-from science.types import Cutout  # noqa: E402
 
-# SPHEREx headers carry SIP coefficients without "-SIP" in the spectral WCS, which makes astropy log a long INFO per file.
-astropy_log.setLevel("WARNING")
+
+def _quiet_astropy() -> None:
+    # SPHEREx headers carry SIP coefficients without "-SIP" in the spectral WCS, which makes astropy log a long INFO per file.
+    from astropy import log as astropy_log
+    astropy_log.setLevel("WARNING")
 
 # FLAGS is a bit field (bit names are in the FLAGS header: MSKNnnnn). Bad = every bit except
 # 12 FULLSAMPLE (info only) and 21 SOURCE (pixel belongs to a real source - we want those!).
@@ -65,6 +65,8 @@ def wavelength_at(hdul, x: float, y: float) -> float | None:
     (wavelength, bandwidth). (x, y) is clipped to the image so an off-image target still gets the
     wavelength of the nearest edge (it varies by only ~0.03 um across a cutout).
     """
+    import numpy as np
+    from astropy.wcs import WCS
     try:
         if "WCS-WAVE" not in hdul:
             return None
@@ -78,9 +80,14 @@ def wavelength_at(hdul, x: float, y: float) -> float | None:
 
 
 def load_cutout(path: Path, mjd: float | None = None, detector: int | None = None,
-                target: dict | None = None) -> Cutout:
+                target: dict | None = None) -> "Cutout":
     """Load one cached cutout. `target` (an api.targets entry) says where to read the wavelength:
     the target's epoch-propagated position; without it the image centre is used."""
+    import numpy as np
+    from astropy.io import fits
+    from astropy.wcs import WCS
+    from science.types import Cutout
+    _quiet_astropy()
     with fits.open(path) as hdul:
         image = np.array(hdul["IMAGE"].data, dtype=float)
         if "ZODI" in hdul:  # subtract the zodiacal-light background
@@ -101,7 +108,7 @@ def load_cutout(path: Path, mjd: float | None = None, detector: int | None = Non
     return Cutout(image=image, flags=flags, wcs=wcs, mjd=mjd, detector=detector, wavelength_um=wavelength)
 
 
-def load_cutouts(target_key: str) -> list[Cutout]:
+def load_cutouts(target_key: str) -> list["Cutout"]:
     """All cached cutouts for a target, sorted by observation time. [] if nothing cached."""
     out = []
     target = TARGETS.get(target_key)

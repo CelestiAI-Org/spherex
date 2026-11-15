@@ -1,7 +1,11 @@
-from dataclasses import dataclass
+from __future__ import annotations  # annotations are not evaluated, so numpy/astropy are only needed for type checking
 
-import numpy as np
-from astropy.wcs import WCS
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
+    from astropy.wcs import WCS
 
 
 @dataclass
