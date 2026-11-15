@@ -1,0 +1,101 @@
+{
+ "target": "rw-aurigae",
+ "name": "RW Aurigae",
+ "ra": 76.95659054099606,
+ "dec": 30.401293172222225,
+ "fov_arcmin": 15.0,
+ "pipeline": "science.pipeline",
+ "matched_distance_arcmin": 0.0,
+ "frame_shape": [
+  292,
+  292
+ ],
+ "large_shape": [
+  1024,
+  1024
+ ],
+ "upscale": 3.507,
+ "image_format": "webp",
+ "stretch": {
+  "type": "asinh",
+  "black_percentile": 1.0,
+  "white_percentile": 99.95,
+  "shared_across_frames": true
+ },
+ "color_channels": {
+  "blue": {
+   "detectors": [
+    1,
+    2
+   ],
+   "wavelength_um": [
+    0.74,
+    1.65
+   ]
+  },
+  "green": {
+   "detectors": [
+    3,
+    4
+   ],
+   "wavelength_um": [
+    1.61,
+    3.85
+   ]
+  },
+  "red": {
+   "detectors": [
+    5,
+    6
+   ],
+   "wavelength_um": [
+    3.8,
+    5.01
+   ]
+  }
+ },
+ "frames": [
+  {
+   "index": 0,
+   "url": "/static/rw-aurigae/0.webp",
+   "png_url_large": "/static/rw-aurigae/0.webp",
+   "png_url_native": "/static/rw-aurigae/0_native.webp",
+   "png_url_color": "/static/rw-aurigae/0_color.webp",
+   "mjd_start": 60919.420312786,
+   "mjd_end": 60938.232724025,
+   "n_images": 112
+  },
+  {
+   "index": 1,
+   "url": "/static/rw-aurigae/1.webp",
+   "png_url_large": "/static/rw-aurigae/1.webp",
+   "png_url_native": "/static/rw-aurigae/1_native.webp",
+   "png_url_color": "/static/rw-aurigae/1_color.webp",
+   "mjd_start": 61091.720282138,
+   "mjd_end": 61111.002753168,
+   "n_images": 112
+  },
+  {
+   "index": 2,
+   "url": "/static/rw-aurigae/2.webp",
+   "png_url_large": "/static/rw-aurigae/2.webp",
+   "png_url_native": "/static/rw-aurigae/2_native.webp",
+   "png_url_color": "/static/rw-aurigae/2_color.webp",
+   "mjd_start": 61285.097835518,
+   "mjd_end": 61299.896562983,
+   "n_images": 109
+  }
+ ],
+ "diffs": [
+  {
+   "a": 0,
+   "b": 1,
+   "url": "/static/rw-aurigae/diff_0_1.webp"
+  },
+  {
+   "a": 1,
+   "b": 2,
+   "url": "/static/rw-aurigae/diff_1_2.webp"
+  }
+ ]
+}

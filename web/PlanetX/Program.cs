@@ -1,3 +1,5 @@
+using PlanetX.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -8,8 +10,12 @@ builder.Services.AddHttpClient("Spherex", client =>
     if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
         throw new InvalidOperationException("SpherexApi:BaseUrl must be an HTTP(S) URL.");
     client.BaseAddress = uri;
-    client.Timeout = TimeSpan.FromSeconds(30);
+    // Per-attempt timeouts and retries are handled by SpherexUpstream (SpherexApi:AttemptTimeoutSeconds, default 90).
+    client.Timeout = Timeout.InfiniteTimeSpan;
 });
+builder.Services.AddSingleton<SpherexUpstream>();
+builder.Services.AddSingleton<StaticExport>();
+builder.Services.AddHostedService<SpherexWarmup>();   // wakes the API as soon as the frontend starts
 
 var app = builder.Build();
 

@@ -121,6 +121,15 @@ button:disabled { cursor: default; opacity: 0.4; }
     transition: opacity 0.35s var(--ease), transform 0.35s var(--ease), display 0.35s allow-discrete;
 }
 .status[hidden] { opacity: 0; transform: translateY(-6px); }
+/* "Waking the telescope data…": a small spinner while the sleeping data service starts. */
+.status.is-waking:not([hidden]) { display: flex; align-items: center; gap: 10px; }
+.status.is-waking::before {
+    content: ""; flex: none; width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.22); border-top-color: var(--warm);
+    animation: status-spin 0.9s linear infinite;
+}
+@keyframes status-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .status.is-waking::before { animation-duration: 2.4s; } }
 @starting-style { .status:not([hidden]) { opacity: 0; transform: translateY(-6px); } }
 
 /* Any future science panel (blink, spectrum, band slider) can opt in to the readable surface. */

@@ -10,42 +10,90 @@ export function wireDemo(scene) {
     const status = document.getElementById("status");
     const viewer = document.getElementById("viewer");
     const observation = createViewer();
-    // The free API sleeps when idle and takes up to a minute to wake. A gateway error or timeout
-    // (502/503/504, or no response) is retried once, with a note in the status line.
-    const request = async (endpoint, params, retry = true) => {
-        let response;
-        try {
-            response = await fetch(`/api/spherex/${endpoint}?${new URLSearchParams(params)}`);
-        } catch (error) {
-            if (!retry) throw new Error("Cannot reach the server. Check the connection and try again.");
+    // The free API sleeps when idle. The server-side proxy already retries it and answers the cached
+    // targets from its offline copy, so a slow request here usually means the API is waking: after
+    // WAKING_NOTE_MS the status line shows "Waking the telescope data…" with a spinner. Network errors
+    // and 502/503/504 are retried with backoff (2 s, 4 s, 8 s) before anything is reported.
+    const WAKING_NOTE_MS = 2500, RETRY_DELAYS_MS = [2000, 4000, 8000];
+    const WAKING_TEXT = "Waking the telescope data…";
+    let pending = 0, wakingTimer = null;
+    const showWaking = on => {
+        if (on) {
+            status.textContent = WAKING_TEXT;
+            status.classList.add("is-waking");
+            status.hidden = false;
+        } else if (status.classList.contains("is-waking")) {
+            status.classList.remove("is-waking");
+            if (status.textContent === WAKING_TEXT) status.hidden = true;
         }
-        if (!response || [502, 503, 504].includes(response.status)) {
-            if (retry) {
-                status.textContent = "Waking the SPHEREx data service, this can take up to a minute…";
-                status.hidden = false;
-                await new Promise(r => setTimeout(r, 1500));
-                return request(endpoint, params, false);
-            }
-        }
-        if (!response.ok) {
-            const body = await response.json().catch(() => ({}));
-            throw new Error(body.error || `HTTP ${response.status}`);
-        }
-        return response.json();
     };
-    // Start waking the API now, so it is up by the time the intro ends or a target is chosen.
-    fetch("/api/spherex/health").catch(() => {});
+    const track = delta => {
+        pending += delta;
+        clearTimeout(wakingTimer);
+        if (pending > 0) wakingTimer = setTimeout(() => showWaking(true), WAKING_NOTE_MS);
+        else showWaking(false);
+    };
+    class ApiError extends Error {
+        constructor(message, status) { super(message); this.status = status; }
+    }
+    // `quiet` requests (background prefetches) never show the waking note.
+    const request = async (endpoint, params, { quiet = false } = {}) => {
+        if (!quiet) track(+1);
+        try {
+            for (let attempt = 0; ; attempt++) {
+                let response = null;
+                try {
+                    response = await fetch(`/api/spherex/${endpoint}?${new URLSearchParams(params)}`);
+                } catch { /* network error: retried below */ }
+                // A 503 with `waking` is the proxy's final answer (it has already retried the API); other
+                // gateway errors come from the hosting layer (e.g. the frontend itself restarting) and are retried.
+                const final = response?.status === 503 && (await response.clone().json().catch(() => ({}))).waking;
+                const transient = !final && (!response || [502, 503, 504].includes(response.status));
+                if (transient && attempt < RETRY_DELAYS_MS.length) {
+                    if (!quiet) showWaking(true);
+                    await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+                    continue;
+                }
+                if (!response) throw new ApiError("Cannot reach the server. Check the connection and try again.", 0);
+                if (!response.ok) {
+                    const body = await response.json().catch(() => ({}));
+                    throw new ApiError(body.error || `HTTP ${response.status}`, response.status);
+                }
+                const data = await response.json();
+                if (response.headers.get("X-Spherex-Source") === "offline") offlineSeen = true;
+                return data;
+            }
+        } finally {
+            if (!quiet) track(-1);
+        }
+    };
+    let offlineSeen = false;
+    // Wake the API now (the page head already started a ping; this one retries), so it is up by the
+    // time the intro ends or a target is chosen. Errors are ignored: requests retry on their own.
+    (window.spherexWake || Promise.resolve(null))
+        .then(r => (r && r.ok ? null : request("health", {}, { quiet: true })))
+        .catch(() => {});
+    // Visitor-facing text for a failed search: never a raw error or status code.
+    const friendly = (error, label) => {
+        if (error?.status === 404 || /HTTP 404/.test(error?.message)) return `Could not find "${label}". Try another name or RA / Dec.`;
+        if (error?.status === 503 && error.message) return error.message;   // the proxy's own explanation
+        if (error?.status === 0) return error.message;
+        return `The telescope data for ${label} is not available right now. Try again in a minute, or pick one of the cached targets.`;
+    };
     // Only ask for band images where the API has them (avoids a 404 per target without bands).
-    let catalogue = null;
+    // Fetched at once in the background, so a search never waits on it while the API wakes.
+    let catalogue = request("targets", {}, { quiet: true }).catch(() => null);
     const hasBands = async key => {
-        catalogue ??= request("targets", {}).catch(() => null);
+        const known = findTarget(key)?.bands;
+        if (typeof known === "boolean") return known;
+        catalogue = (await catalogue) ? catalogue : request("targets", {}).catch(() => null);
         const entry = (await catalogue)?.find?.(t => t.key === key);
         return entry ? entry.has_bands !== false : true;
     };
     const back = document.getElementById("back-to-sky");
     if (!form || !mode || !status || !viewer) return;
 
-    const say = text => { status.textContent = text; status.hidden = !text; };
+    const say = text => { status.classList.remove("is-waking"); status.textContent = text; status.hidden = !text; };
     let busy = false;
 
     form.addEventListener("submit", async () => {
@@ -74,6 +122,7 @@ export function wireDemo(scene) {
         }
 
         busy = true;
+        offlineSeen = false;
         observation.close();
         document.getElementById("target-panel").hidden = true;
         document.getElementById("menu-toggle").setAttribute("aria-expanded", "false");
@@ -103,9 +152,12 @@ export function wireDemo(scene) {
             const { frames, extras } = await data;
             observation.open(label, key, frames, extras);
             say(frames ? "" : `No cached SPHEREx frames for ${label}.`);
+            // Answered from the frontend's offline copy while the live service sleeps: say so, quietly.
+            const detail = document.getElementById("target-detail");
+            if (frames && offlineSeen && detail) detail.textContent += " · saved copy";
         } catch (error) {
             if (error?.name === "AbortError") return;
-            say(/HTTP 404/.test(error.message) ? `Could not find "${label}". Try another name or RA / Dec.` : `Could not reach ${label}: ${error.message}`);
+            say(friendly(error, label));
             scene.reset();      // not awaited, so a new search is accepted straight away
         } finally {
             busy = false;
