@@ -51,6 +51,10 @@ public sealed class SpherexController(SpherexUpstream upstream, StaticExport off
         catch (UpstreamUnavailableException)
         {
             if (local is not null) return Local(local);
+            // The page pings health on load to wake the API: answer 200 so a visitor's console shows no error,
+            // and say in the body that the cached targets are being served offline (the keep-alive checks this).
+            if (endpoint == "health")
+                return Ok(new { status = "offline", api = "unreachable", offline_targets = offline.Keys });
             return StatusCode(503, new
             {
                 error = endpoint == "resolve"

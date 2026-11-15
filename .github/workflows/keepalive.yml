@@ -32,9 +32,14 @@ jobs:
                         --retry 3 --retry-delay 10 --retry-all-errors "$url") || true
             echo "$code  $url  $(head -c 200 /tmp/body 2>/dev/null)"
             [ "$code" = 200 ] || { echo "::error title=Keep-alive failed::$url answered HTTP ${code:-none} after retries"; return 1; }
+            # The proxy's health always answers 200 (so visitors' consoles stay clean); its body says whether
+            # it reached the API ("ok") or is serving the offline copy ("offline").
+            if [ -n "${2:-}" ] && ! grep -q "\"status\":\"$2\"" /tmp/body; then
+              echo "::error title=Keep-alive failed::$url did not report status $2 (the proxy cannot reach the API)"; return 1
+            fi
           }
           fail=0
-          ping "$API/health"            || fail=1
-          ping "$WEB/health"            || fail=1
-          ping "$WEB/api/spherex/health" || fail=1   # frontend -> proxy -> API, the path the browser uses
+          ping "$API/health"                  || fail=1
+          ping "$WEB/health"                  || fail=1
+          ping "$WEB/api/spherex/health" ok   || fail=1   # frontend -> proxy -> API, the path the browser uses
           exit $fail
