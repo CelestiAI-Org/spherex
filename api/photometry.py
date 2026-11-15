@@ -28,8 +28,10 @@ from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_area
 
 from api.fallback import MASK
-from api.load_cache import CACHE_DIR, load_index, target_dir, wavelength_at
+from api.load_cache import CACHE_DIR, _quiet_astropy, load_index, target_dir, wavelength_at
 from api.targets import TARGETS, mjd_to_year, propagate
+
+_quiet_astropy()  # this module reads FITS headers directly
 
 AP_RADIUS_PX = 3.0
 ANNULUS_PX = (8.0, 14.0)

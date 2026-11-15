@@ -10,8 +10,23 @@ BARNARD = dict(ra=269.4521, dec=4.6934)  # catalogue (J2000) position; cache is 
 
 def test_health(client):
     r = client.get("/health")
+    assert r.status_code == 200 and r.json() == {"status": "ok"}
+    assert client.head("/health").status_code == 200  # uptime monitors ping with HEAD
+
+
+def test_status(client):
+    r = client.get("/status")
     assert r.status_code == 200
     assert "barnards-star" in r.json()["cached_targets"]
+
+
+def test_startup_does_not_import_heavy_modules():
+    """Cold start on Render's free plan pays every import: keep astropy/reproject/science out of startup."""
+    import subprocess, sys
+    code = ("import sys, api.main; heavy = [m for m in ('astropy', 'reproject', 'scipy', 'dask', 'numpy', "
+            "'science.pipeline', 'api.display', 'api.photometry') if m in sys.modules]; print(','.join(heavy))")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.strip()
+    assert out == "", f"imported at startup: {out}"
 
 
 def test_resolve_known(client):
@@ -69,7 +84,7 @@ def test_frames_switch_to_science_pipeline(client, monkeypatch):
     assert calls, "fake build_frames was never called"
     assert body["pipeline"] == "science.pipeline"
     assert len(body["frames"]) == 1 and body["frames"][0]["n_images"] == 6
-    assert client.get("/health").json()["pipeline"] == "science.pipeline"
+    assert client.get("/status").json()["pipeline"] == "science.pipeline"
     compute_frames.cache_clear()
 
 
