@@ -27,7 +27,7 @@ jobs:
         run: |
           # A sleeping service can take ~30-60 s to wake: 60 s per attempt, 4 attempts, 10 s apart.
           ping() {
-            local url=$1 code
+            local url=$1 code; rm -f /tmp/body
             code=$(curl -sS -o /tmp/body -w '%{http_code}' --max-time 60 \
                         --retry 3 --retry-delay 10 --retry-all-errors "$url") || true
             echo "$code  $url  $(head -c 200 /tmp/body 2>/dev/null)"
