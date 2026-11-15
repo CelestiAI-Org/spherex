@@ -21,7 +21,7 @@ public sealed class SpherexController(SpherexUpstream upstream, StaticExport off
     private static readonly HashSet<string> Endpoints = ["health", "targets", "resolve", "frames", "spectrum", "frames_by_detector", "frames_by_band", "diff"];
     private static readonly HashSet<string> ImageFields = ["url", "png_url", "png_url_large", "png_url_native", "png_url_color", "webp_url"];
 
-    [HttpGet("{endpoint}")]
+    [HttpGet("{endpoint}"), HttpHead("{endpoint}")]   // HEAD: uptime monitors ping with it by default
     public async Task<IActionResult> Get(string endpoint, CancellationToken ct)
     {
         if (!Endpoints.Contains(endpoint)) return NotFound();
