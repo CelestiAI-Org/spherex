@@ -6,6 +6,8 @@
     <title>@ViewData["Title"] - PlanetX</title>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/PlanetX.styles.css" asp-append-version="true" />
+    @* Start waking the science API at once (it sleeps when idle), while the page, the sky and the intro load. *@
+    <script>window.spherexWake = fetch("/api/spherex/health", { cache: "no-store" }).catch(() => null);</script>
 </head>
 <body>
     <div class="container">
