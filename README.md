@@ -24,7 +24,8 @@ deployed server serves (`SPHEREX_PREFER_STATIC=1` in the Dockerfile, and `cache/
 
 | Endpoint | Returns |
 |---|---|
-| `GET /health` | `{status, pipeline, cached_targets, static_targets}`; `pipeline` is `science.pipeline` or `fallback` |
+| `GET /health` (also `HEAD`) | `{"status": "ok"}`, instantly: no imports, no disk access (for Render and the keep-alive pingers) |
+| `GET /status` | `{status, pipeline, cached_targets, static_targets, prefer_static}`; `pipeline` is `science.pipeline` or `fallback` |
 | `GET /targets` | every cached target: `[{key, name, ra, dec, visits, source, frames_url}]` - lets the frontend use names, not coordinates |
 | `GET /resolve?name=Barnard's Star` | `{name, key, ra, dec, source, cached}` - known targets from our table, others via CDS Sesame |
 | `GET /frames?target=barnards-star` or `?ra=&dec=&fov=` | `{target, ra, dec, fov_arcmin, pipeline, frame_shape, large_shape, upscale, stretch, color_channels, matched_distance_arcmin, frames:[{index, url, png_url_large, png_url_native, png_url_color, mjd_start, mjd_end, n_images}]}`. `url`/`png_url_large` is a 6x Lanczos PNG, `png_url_native` the native pixels, `png_url_color` a false-colour composite of that visit (north up, east left). With `ra`/`dec` it matches the nearest cached target within 10 arcmin (catalogue or 2026 position); otherwise a JSON error `{"error", "nearest", "available_targets"}` (404) |
@@ -98,3 +99,21 @@ Render builds the `deploy` branch, which holds only what the Docker image needs 
 change (or a new `scripts/export_static.py` run): commit and push to `main`, then run **`scripts/update_deploy.sh`** (`--dry-run`
 to preview, `--squash` to restart the branch's history as one commit). It builds the tree from git objects, never touches your
 working tree, and only fast-forwards `deploy`. Frontend-only pushes to `main` need nothing.
+
+### Keep-alive and "never down"
+
+Both Render services are on the free plan and sleep after ~15 minutes without traffic. Four layers keep the site up:
+
+1. **Keep-alive pings**: `.github/workflows/keepalive.yml` runs every 5 minutes (GitHub can delay scheduled runs, so
+   a second pinger such as UptimeRobot should hit the same URLs) and fails if any of these is not healthy:
+   `https://spherex-api-cpln.onrender.com/health`, `https://spherex-web.onrender.com/health` and
+   `https://spherex-web.onrender.com/api/spherex/health` (the proxy path; its body must say `"status":"ok"`).
+2. **Fast cold start**: the API imports numpy/astropy/reproject/science only inside the endpoints that need them;
+   startup just builds the FastAPI app (`tests/test_api.py::test_startup_does_not_import_heavy_modules` guards it).
+3. **Proxy + page**: the frontend proxy wakes the API at startup and retries every call (90 s per attempt, 3 retries,
+   1/2/4 s backoff); the page pings `/api/spherex/health` from `<head>`, retries its own requests, and shows
+   "Waking the telescope data…" while waiting.
+4. **Offline copy**: `scripts/update_deploy_web.sh` ships `static_export/` inside the frontend image, and the proxy
+   answers the cached targets from it if the API fails, is slower than 10 s (`SpherexApi:LocalFallbackAfterSeconds`)
+   or failed in the last minute. Only `/resolve` of names outside the catalogue needs the live API.
+   The `X-Spherex-Source` header (`live`/`offline`) and "· saved copy" in the viewer show which one answered.
