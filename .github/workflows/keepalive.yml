@@ -1,7 +1,7 @@
-# Keeps the two Render free-plan services awake (they sleep after ~15 min without traffic) and fails
-# loudly if either is down. Scheduled workflows only run from the default branch (main).
-# GitHub may delay or skip scheduled runs under load, so a second pinger (UptimeRobot / cron-job.org)
-# should hit the same URLs; see the "Keep-alive" section of README.md.
+# Keeps the Render free-plan frontend awake (it sleeps after ~15 min without traffic) and fails loudly if it
+# is down. Only the frontend is pinged: the API is allowed to sleep, to stay inside Render's 750 free
+# instance-hours a month. While it sleeps, the frontend's proxy serves the cached targets from its offline
+# copy and wakes the API in the background. Scheduled workflows only run from the default branch (main).
 name: keepalive
 
 on:
@@ -19,27 +19,12 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      API: https://spherex-api-cpln.onrender.com
-      WEB: https://spherex-web.onrender.com
     steps:
-      - name: Ping API, frontend and proxy
+      - name: Ping the frontend
         run: |
-          # A sleeping service can take ~30-60 s to wake: 60 s per attempt, 4 attempts, 10 s apart.
-          ping() {
-            local url=$1 code; rm -f /tmp/body
-            code=$(curl -sS -o /tmp/body -w '%{http_code}' --max-time 60 \
-                        --retry 3 --retry-delay 10 --retry-all-errors "$url") || true
-            echo "$code  $url  $(head -c 200 /tmp/body 2>/dev/null)"
-            [ "$code" = 200 ] || { echo "::error title=Keep-alive failed::$url answered HTTP ${code:-none} after retries"; return 1; }
-            # The proxy's health always answers 200 (so visitors' consoles stay clean); its body says whether
-            # it reached the API ("ok") or is serving the offline copy ("offline").
-            if [ -n "${2:-}" ] && ! grep -q "\"status\":\"$2\"" /tmp/body; then
-              echo "::error title=Keep-alive failed::$url did not report status $2 (the proxy cannot reach the API)"; return 1
-            fi
-          }
-          fail=0
-          ping "$API/health"                  || fail=1
-          ping "$WEB/health"                  || fail=1
-          ping "$WEB/api/spherex/health" ok   || fail=1   # frontend -> proxy -> API, the path the browser uses
-          exit $fail
+          # A sleeping service can take ~30-60 s to wake: 60 s per attempt, 3 retries, 10 s apart.
+          url=https://spherex-web.onrender.com/health
+          code=$(curl -sS -o /tmp/body -w '%{http_code}' --max-time 60 \
+                      --retry 3 --retry-delay 10 --retry-all-errors "$url") || true
+          echo "$code  $url  $(head -c 200 /tmp/body 2>/dev/null)"
+          [ "$code" = 200 ] || { echo "::error title=Keep-alive failed::$url answered HTTP ${code:-none} after retries"; exit 1; }

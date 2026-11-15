@@ -105,9 +105,9 @@ working tree, and only fast-forwards `deploy`. Frontend-only pushes to `main` ne
 Both Render services are on the free plan and sleep after ~15 minutes without traffic. Four layers keep the site up:
 
 1. **Keep-alive pings**: `.github/workflows/keepalive.yml` runs every 5 minutes (GitHub can delay scheduled runs, so
-   a second pinger such as UptimeRobot should hit the same URLs) and fails if any of these is not healthy:
-   `https://spherex-api-cpln.onrender.com/health`, `https://spherex-web.onrender.com/health` and
-   `https://spherex-web.onrender.com/api/spherex/health` (the proxy path; its body must say `"status":"ok"`).
+   a second pinger such as UptimeRobot can hit the same URL) and fails if `https://spherex-web.onrender.com/health`
+   is not healthy. Only the frontend is kept awake: the API is allowed to sleep, to stay inside Render's 750 free
+   instance-hours a month (layers 3 and 4 cover it while it wakes).
 2. **Fast cold start**: the API imports numpy/astropy/reproject/science only inside the endpoints that need them;
    startup just builds the FastAPI app (`tests/test_api.py::test_startup_does_not_import_heavy_modules` guards it).
 3. **Proxy + page**: the frontend proxy wakes the API at startup and retries every call (90 s per attempt, 3 retries,
